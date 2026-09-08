@@ -1,0 +1,379 @@
+import React, { useState } from 'react';
+import { 
+  Search, 
+  Filter, 
+  AlertTriangle, 
+  ShieldAlert, 
+  CheckCircle2, 
+  Eye, 
+  X,
+  Clock,
+  Laptop,
+  ArrowRight
+} from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+
+export const AlertsPage = ({ users = [], events = [], incidents = [], onSelectUser, onSelectIncident }) => {
+  const { isDark } = useTheme();
+
+  // Initialize alerts from actual incidents and high-risk events
+  const [alerts, setAlerts] = useState(() => {
+    const list = incidents.map((inc, i) => ({
+      id: `ALT-2026-${(i + 1).toString().padStart(3, '0')}`,
+      severity: inc.severity || 'HIGH',
+      type: inc.eventType ? inc.eventType.replace(/_/g, ' ') : 'SUSPICIOUS_ANOMALY',
+      employeeName: inc.userName || 'Authorized Personnel',
+      employeeId: inc.userEmail ? inc.userEmail.split('@')[0] : 'EMP',
+      userId: inc.userId,
+      device: 'Corporate Managed Workstation',
+      riskScore: inc.riskScore || 75,
+      detectedAt: inc.detectedAt ? new Date(inc.detectedAt).toLocaleString() : 'Just now',
+      status: inc.status === 'RESOLVED' ? 'RESOLVED' : inc.status === 'UNDER_REVIEW' ? 'INVESTIGATING' : 'NEW',
+      details: inc.aiExplanation || 'Dual-layer ML anomaly detected by Random Forest and Isolation Forest classifiers.'
+    }));
+
+    if (list.length === 0) {
+      events.slice(0, 8).forEach((evt, idx) => {
+        const sev = evt.isAnomalous || (evt.riskContribution && evt.riskContribution >= 70) 
+          ? 'CRITICAL' 
+          : (evt.riskContribution && evt.riskContribution >= 50) 
+            ? 'HIGH' 
+            : 'MEDIUM';
+
+        list.push({
+          id: `ALT-2026-${(idx + 10).toString().padStart(3, '0')}`,
+          severity: sev,
+          type: evt.eventType ? evt.eventType.replace(/_/g, ' ') : 'PRIVILEGE_ACCESS',
+          employeeName: evt.userName || 'Corporate User',
+          employeeId: evt.userId || `EMP00${idx + 1}`,
+          userId: evt.userId,
+          device: evt.deviceName || 'Enterprise Laptop',
+          riskScore: evt.riskContribution || 55,
+          detectedAt: evt.timestamp ? new Date(evt.timestamp).toLocaleString() : 'Recent',
+          status: 'NEW',
+          details: 'Zero Trust continuous verification trigger logged anomaly in event stream.'
+        });
+      });
+    }
+
+    return list;
+  });
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [activeAlert, setActiveAlert] = useState(null);
+
+  const handleUpdateStatus = (id, newStatus) => {
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
+    if (activeAlert?.id === id) {
+      setActiveAlert(prev => prev ? { ...prev, status: newStatus } : null);
+    }
+  };
+
+  const filteredAlerts = alerts.filter(a => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = 
+      a.type.toLowerCase().includes(q) ||
+      a.employeeName.toLowerCase().includes(q) ||
+      a.id.toLowerCase().includes(q) ||
+      a.device.toLowerCase().includes(q);
+
+    const matchesSeverity = severityFilter === 'ALL' || a.severity === severityFilter;
+    const matchesStatus = statusFilter === 'ALL' || a.status === statusFilter;
+    return matchesSearch && matchesSeverity && matchesStatus;
+  });
+
+  // Restrained colors as required:
+  // CRITICAL: red, HIGH: orange, MEDIUM: gold (#D4AF37), SAFE: green
+  const getSeverityStyle = (sev) => {
+    switch (sev) {
+      case 'CRITICAL':
+        return 'border-red-500 text-red-400 bg-red-500/10';
+      case 'HIGH':
+        return 'border-orange-500 text-orange-400 bg-orange-500/10';
+      case 'MEDIUM':
+        return 'border-[#D4AF37] text-[#D4AF37] bg-[#D4AF37]/10';
+      case 'SAFE':
+      case 'LOW':
+      default:
+        return 'border-emerald-500 text-emerald-400 bg-emerald-500/10';
+    }
+  };
+
+  return (
+    <div className="space-y-10">
+      {/* Editorial Header */}
+      <div className={`p-8 sm:p-10 border border-[#D4AF37]/25 relative transition-colors ${
+        isDark ? 'bg-black' : 'bg-white'
+      }`}>
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 relative z-10">
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-[10px] font-mono tracking-[0.25em] uppercase text-[#D4AF37] border border-[#D4AF37]/40 px-2.5 py-0.5">
+                SOC ALERT INBOX
+              </span>
+              <span className="text-[11px] font-mono text-gray-500">
+                REAL-TIME THREAT TRIAGE
+              </span>
+            </div>
+
+            <h1 className="font-serif-display text-3xl sm:text-4xl lg:text-5xl font-light tracking-tight">
+              Security Alerts &amp; Behavioral Warnings
+            </h1>
+            <p className="text-xs text-gray-400 max-w-2xl mt-3 font-sans leading-relaxed">
+              Consolidated triage queue generated by machine learning anomaly classifiers, policy breaches, lateral movement attempts, and continuous risk thresholds.
+            </p>
+          </div>
+
+          <div className="text-right font-mono text-xs">
+            <span className="text-gray-500">ACTIVE UNRESOLVED: </span>
+            <span className="text-[#D4AF37] font-bold">
+              {alerts.filter(a => a.status !== 'RESOLVED').length} ALERTS
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter and Search Controls */}
+      <div className={`p-4 border border-[#D4AF37]/20 flex flex-col md:flex-row gap-4 items-center justify-between ${
+        isDark ? 'bg-[#0A0C10]' : 'bg-white'
+      }`}>
+        <div className="relative w-full md:w-80">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search alerts, type, employee, or device..."
+            className={`w-full border text-xs pl-9 pr-3 py-2 outline-none font-mono transition-all ${
+              isDark 
+                ? 'bg-black border-[#D4AF37]/30 text-white focus:border-[#D4AF37]' 
+                : 'bg-[#F9F9F7] border-gray-300 text-black focus:border-[#D4AF37]'
+            }`}
+          />
+          <Search className="w-3.5 h-3.5 text-[#D4AF37] absolute left-3 top-1/2 -translate-y-1/2" />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto text-xs font-mono">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">SEVERITY:</span>
+            <select
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value)}
+              className={`border text-xs px-3 py-1.5 outline-none font-mono cursor-pointer ${
+                isDark ? 'bg-black border-[#D4AF37]/30 text-white' : 'bg-white border-gray-300 text-black'
+              }`}
+            >
+              <option value="ALL">All Severities</option>
+              <option value="CRITICAL">Critical</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="SAFE">Safe / Low</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">STATUS:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={`border text-xs px-3 py-1.5 outline-none font-mono cursor-pointer ${
+                isDark ? 'bg-black border-[#D4AF37]/30 text-white' : 'bg-white border-gray-300 text-black'
+              }`}
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="NEW">New</option>
+              <option value="INVESTIGATING">Investigating</option>
+              <option value="RESOLVED">Resolved</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* SOC Alert Feed Table */}
+      {/* Required Columns: Severity, Alert Type, Employee, Device, Risk, Detected, Status, Action */}
+      <div className={`border border-[#D4AF37]/25 overflow-hidden ${
+        isDark ? 'bg-black' : 'bg-white'
+      }`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className={`border-b border-[#D4AF37]/25 font-mono text-[10px] uppercase tracking-[0.15em] ${
+              isDark ? 'bg-[#0A0C10] text-[#D4AF37]' : 'bg-[#F9F9F7] text-[#B8860B]'
+            }`}>
+              <tr>
+                <th className="py-3.5 px-4 text-center">SEVERITY</th>
+                <th className="py-3.5 px-4">ALERT TYPE</th>
+                <th className="py-3.5 px-4">EMPLOYEE</th>
+                <th className="py-3.5 px-4">DEVICE</th>
+                <th className="py-3.5 px-4 text-center">RISK</th>
+                <th className="py-3.5 px-4 font-mono">DETECTED</th>
+                <th className="py-3.5 px-4 text-center">STATUS</th>
+                <th className="py-3.5 px-4 text-right">ACTION</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#D4AF37]/15 font-mono">
+              {filteredAlerts.length > 0 ? (
+                filteredAlerts.map((alert) => (
+                  <tr
+                    key={alert.id}
+                    className="hover:bg-[#D4AF37]/5 transition-colors duration-150 group"
+                  >
+                    {/* Severity */}
+                    <td className="py-3.5 px-4 text-center">
+                      <span className={`inline-block text-[9px] px-2 py-0.5 border font-bold uppercase ${getSeverityStyle(alert.severity)}`}>
+                        {alert.severity}
+                      </span>
+                    </td>
+
+                    {/* Alert Type */}
+                    <td className="py-3.5 px-4">
+                      <span className="font-serif-display text-sm font-medium block">
+                        {alert.type}
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {alert.id}
+                      </span>
+                    </td>
+
+                    {/* Employee */}
+                    <td className="py-3.5 px-4 font-sans">
+                      <span className="font-medium text-xs text-current block">
+                        {alert.employeeName}
+                      </span>
+                      <span className="text-[10px] font-mono text-gray-500">
+                        {alert.employeeId}
+                      </span>
+                    </td>
+
+                    {/* Device */}
+                    <td className="py-3.5 px-4 text-gray-400 text-[11px]">
+                      {alert.device}
+                    </td>
+
+                    {/* Risk */}
+                    <td className="py-3.5 px-4 text-center">
+                      <span className="text-xs font-bold text-[#D4AF37]">
+                        {alert.riskScore}
+                      </span>
+                      <span className="text-[10px] text-gray-500">/100</span>
+                    </td>
+
+                    {/* Detected */}
+                    <td className="py-3.5 px-4 text-gray-400 text-[11px]">
+                      {alert.detectedAt}
+                    </td>
+
+                    {/* Status */}
+                    <td className="py-3.5 px-4 text-center">
+                      <span className={`text-[9px] px-2 py-0.5 border uppercase font-semibold ${
+                        alert.status === 'NEW'
+                          ? 'border-[#D4AF37] text-[#D4AF37]'
+                          : alert.status === 'INVESTIGATING'
+                            ? 'border-orange-500 text-orange-400'
+                            : 'border-emerald-500 text-emerald-400'
+                      }`}>
+                        {alert.status}
+                      </span>
+                    </td>
+
+                    {/* Action */}
+                    <td className="py-3.5 px-4 text-right">
+                      <button
+                        onClick={() => setActiveAlert(alert)}
+                        className="px-2.5 py-1 border border-[#D4AF37]/30 hover:border-[#D4AF37] text-[10px] text-[#D4AF37] transition-colors cursor-pointer"
+                      >
+                        REVIEW
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-xs font-mono text-gray-500">
+                    No active security alerts match criteria.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Alert Investigation Modal / Side Panel */}
+      {activeAlert && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
+          <div className={`w-full max-w-lg h-full border-l border-[#D4AF37]/30 p-8 overflow-y-auto space-y-6 shadow-2xl ${
+            isDark ? 'bg-black text-white' : 'bg-white text-black'
+          }`}>
+            <div className="flex items-center justify-between pb-4 border-b border-[#D4AF37]/20">
+              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#D4AF37]">
+                ALERT INVESTIGATION
+              </span>
+              <button
+                onClick={() => setActiveAlert(null)}
+                className="text-gray-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <span className={`inline-block text-[9px] font-mono px-2 py-0.5 border uppercase font-bold mb-2 ${getSeverityStyle(activeAlert.severity)}`}>
+                {activeAlert.severity} PRIORITY
+              </span>
+              <h2 className="font-serif-display text-2xl font-light">{activeAlert.type}</h2>
+              <div className="text-xs font-mono text-gray-400 mt-1">
+                Alert ID: {activeAlert.id} • Detected: {activeAlert.detectedAt}
+              </div>
+            </div>
+
+            <div className="p-4 border border-[#D4AF37]/20 space-y-2 text-xs font-mono">
+              <div className="flex justify-between text-gray-400">
+                <span>Target Employee:</span>
+                <span className="text-current font-semibold">{activeAlert.employeeName}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Associated Device:</span>
+                <span className="text-current">{activeAlert.device}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>Risk Contribution:</span>
+                <span className="text-[#D4AF37] font-bold">{activeAlert.riskScore} / 100</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-[#D4AF37] block">
+                AI EXPLANATION &amp; TELEMETRY
+              </span>
+              <p className="text-xs font-sans text-gray-300 leading-relaxed p-4 border border-[#D4AF37]/20 bg-[#D4AF37]/5">
+                {activeAlert.details}
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-3 pt-4 border-t border-[#D4AF37]/20">
+              <span className="text-[10px] font-mono text-gray-400 tracking-widest uppercase block">
+                TRIAGE ACTIONS
+              </span>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleUpdateStatus(activeAlert.id, 'INVESTIGATING')}
+                  className="py-2.5 border border-orange-500/50 text-orange-400 text-xs font-mono hover:bg-orange-500/10 cursor-pointer"
+                >
+                  MARK INVESTIGATING
+                </button>
+                <button
+                  onClick={() => handleUpdateStatus(activeAlert.id, 'RESOLVED')}
+                  className="py-2.5 border border-emerald-500/50 text-emerald-400 text-xs font-mono hover:bg-emerald-500/10 cursor-pointer"
+                >
+                  MARK RESOLVED
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

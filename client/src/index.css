@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #0E0E0E;
+    --bg-surface: #141414;
+    --bg-surface-elevated: #1B1B1B;
+    --border-subtle: #2A2A2A;
+    --border-gold: #C6A14A;
+    --gold: #C6A14A;
+    --gold-dark: #A98532;
+    --gold-light: #E5D39A;
+    --text-main: #FFFFFF;
+    --text-muted: #A0A0A0;
+    --text-dim: #6B6B6B;
+  }
+
+  .light-theme {
+    --bg-main: #F7F4EC;
+    --bg-surface: #FFFFFF;
+    --bg-surface-elevated: #EFECE3;
+    --border-subtle: #E5E5E5;
+    --border-gold: #C6A14A;
+    --gold: #C6A14A;
+    --gold-dark: #A98532;
+    --gold-light: #E5D39A;
+    --text-main: #0E0E0E;
+    --text-muted: #6B6B6B;
+    --text-dim: #8E8E8E;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
+    letter-spacing: -0.01em;
+  }
+
+  .font-serif-display {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+  }
+
+  /* Universal Interactive & Accent Helpers */
+  .border-gold {
+    border-color: #C6A14A;
+  }
+
+  .border-gold-subtle {
+    border-color: rgba(198, 161, 74, 0.25);
+  }
+
+  .border-gold-accent {
+    border-color: rgba(198, 161, 74, 0.6);
+  }
+
+  .text-gold {
+    color: #C6A14A;
+  }
+
+  .bg-gold {
+    background-color: #C6A14A;
+  }
+
+  /* Sleek Minimalist Shadows */
+  .shadow-subtle {
+    box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.05);
+  }
+
+  .dark .shadow-subtle {
+    box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Card hover */
+  .card-hover-gold {
+    transition: all 200ms ease;
+  }
+  .card-hover-gold:hover {
+    border-color: #C6A14A !important;
+  }
+
+  /* Sleek Custom Scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(198, 161, 74, 0.25);
+    border-radius: 9999px;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #C6A14A;
+  }
+
+  .light-theme ::-webkit-scrollbar-thumb {
+    background: rgba(198, 161, 74, 0.35);
+    border-radius: 9999px;
+  }
+
+  .light-theme ::-webkit-scrollbar-thumb:hover {
+    background: #A98532;
+  }
+}
+
+::selection {
+  background: #C6A14A;
+  color: #111111;
+}
+
+::-moz-selection {
+  background: #C6A14A;
+  color: #111111;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}

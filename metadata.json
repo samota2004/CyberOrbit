@@ -1,0 +1,8 @@
+{
+  "name": "CyberOrbit — Zero Trust & UEBA Security Platform",
+  "description": "Enterprise-grade Zero Trust Architecture and User & Entity Behavior Analytics (UEBA) platform with machine learning anomaly detection, adaptive risk scoring, and automated policy containment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
