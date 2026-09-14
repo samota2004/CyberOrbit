@@ -258,7 +258,12 @@ class IncidentRepository {
 class AuditLogRepository {
   async findAll(limit = 100) {
     try {
-      return await prisma.auditLog.findMany({ take: limit, orderBy: { timestamp: 'desc' } });
+      return await prisma.auditLog.findMany({
+        take: limit,
+        orderBy: {
+          timestamp: "desc"
+        }
+      });
     } catch {
       return [];
     }
@@ -266,8 +271,44 @@ class AuditLogRepository {
 
   async create(data) {
     try {
-      return await prisma.auditLog.create({ data });
-    } catch {
+      const normalizedDetails =
+        typeof data.details === "string"
+          ? data.details
+          : JSON.stringify(data.details ?? {});
+
+      const normalizedMetadata =
+        data.metadata &&
+        typeof data.metadata === "object"
+          ? data.metadata
+          : {};
+
+      return await prisma.auditLog.create({
+        data: {
+          userId: data.userId || "user-001",
+
+          userEmail:
+            data.userEmail ||
+            "unknown@enterprise.local",
+
+          action: data.action || "UNKNOWN_ACTION",
+
+          category: data.category || "SYSTEM",
+
+          severity: data.severity || "INFO",
+
+          details: normalizedDetails,
+
+          ip: data.ip || "127.0.0.1",
+
+          metadata: normalizedMetadata
+        }
+      });
+    } catch (error) {
+      console.warn(
+        "Audit log database sync warning:",
+        error?.message || error
+      );
+
       return data;
     }
   }

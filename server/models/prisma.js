@@ -1,20 +1,20 @@
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { PrismaClient } from "@prisma/client";
 
-/**
- * Validates whether the provided string is a syntactically valid PostgreSQL connection URI.
- * PostgreSQL connection URLs must begin with postgresql:// or postgres://.
- */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load the root capstone/.env before Prisma is initialized
+dotenv.config({
+  path: path.resolve(__dirname, "../../.env")
+});
 export function isValidPostgresUrl(url) {
   if (!url || typeof url !== 'string') return false;
   const clean = url.replace(/^["']|["']$/g, "").trim();
   return clean.startsWith("postgresql://") || clean.startsWith("postgres://");
 }
-
-/**
- * Safe in-memory proxy for PrismaClient when PostgreSQL is not configured
- * or when DATABASE_URL is not a valid PostgreSQL connection string.
- * Prevents Prisma engine datasource validation crashes while maintaining API compatibility.
- */
 function createSafePrismaProxy() {
   const handler = {
     get(target, prop) {

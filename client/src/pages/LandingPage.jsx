@@ -47,16 +47,40 @@ export const LandingPage = ({ onLogin, onEnterDashboard, onNavigateToLogin, onEx
     }
   };
 
-  const handleContactSubmit = (e) => {
-    e.preventDefault();
-    if (contactForm.name && contactForm.email) {
-      setContactSubmitted(true);
-      setTimeout(() => {
-        setContactSubmitted(false);
-        setContactForm({ name: '', email: '', organization: '', message: '' });
-      }, 5000);
+  const handleContactSubmit = async (e) => {
+  e.preventDefault();
+
+  if (contactForm.name && contactForm.email && contactForm.message) {
+    try {
+      const response = await fetch('https://formspree.io/f/myeyloqo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(contactForm)
+      });
+
+      if (response.ok) {
+        setContactSubmitted(true);
+
+        setTimeout(() => {
+          setContactSubmitted(false);
+          setContactForm({
+            name: '',
+            email: '',
+            organization: '',
+            message: ''
+          });
+        }, 5000);
+      } else {
+        alert('Failed to send inquiry. Please try again.');
+      }
+    } catch (error) {
+      alert('Something went wrong. Please try again.');
     }
-  };
+  }
+};
 
   // Section 4 Technologies
   const technologies = [

@@ -74,7 +74,6 @@ export const CopilotModal = ({ isOpen, onClose, initialContext, context }) => {
     };
 
     const quickPrompts = [
-        "Investigate EMP102 (Sarah Jenkins) risk signals",
         "Summarize all active security incidents",
         "Recommend Zero Trust policy optimizations",
         "Explain how the UEBA ML pipeline calculates cross-department risk"
