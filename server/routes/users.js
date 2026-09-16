@@ -6,6 +6,10 @@ import { trustEngine } from "../../cyber/zero-trust/trust-engine.js";
 
 const router = Router();
 
+function isEmployeeRole(role) {
+  return role === "EMPLOYEE" || role === "MANAGER";
+}
+
 function normalizeUser(user) {
   if (!user) {
     return null;
@@ -34,17 +38,29 @@ router.get("/", async (req, res) => {
       const users =
         await userRepository.findAll();
 
-      db.users = users.map(normalizeUser);
+      const normalizedUsers =
+        users.map(normalizeUser);
+
+      db.users = normalizedUsers;
+
+      const employees =
+        normalizedUsers.filter((user) =>
+          isEmployeeRole(user.roleCode || user.role)
+        );
 
       return res.json({
         success: true,
-        users: db.users
+        users: employees
       });
     }
 
     return res.json({
       success: true,
-      users: db.users.map(normalizeUser)
+      users: db.users
+        .map(normalizeUser)
+        .filter((user) =>
+          isEmployeeRole(user.roleCode || user.role)
+        )
     });
   } catch (error) {
     console.error(
@@ -83,6 +99,20 @@ router.get("/:id", async (req, res) => {
     }
 
     if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: "USER_NOT_FOUND",
+          message: "User not found."
+        }
+      });
+    }
+
+    if (
+      !isEmployeeRole(
+        user.roleCode || user.role
+      )
+    ) {
       return res.status(404).json({
         success: false,
         error: {
@@ -163,8 +193,6 @@ router.post(
         "ENGINEERING";
 
       const role =
-        body.role ||
-        body.roleCode ||
         "EMPLOYEE";
 
       const status =
@@ -220,27 +248,7 @@ router.post(
         status,
         currentRiskScore: 15,
         currentRiskLevel: "LOW",
-        currentTrustScore: 98,
-        baseline: {
-          normalWorkHours: {
-            start: 8,
-            end: 18
-          },
-          allowedDepartments: [
-            department
-          ],
-          typicalLocations: [
-            "HQ"
-          ],
-          maxDownloadVolumeMB: 500,
-          normalAccessDays: [
-            1,
-            2,
-            3,
-            4,
-            5
-          ]
-        }
+        currentTrustScore: 98
       };
 
       let createdUser;
@@ -394,6 +402,23 @@ router.patch(
         });
       }
 
+      if (
+        !isEmployeeRole(
+          existingUser.roleCode ||
+          existingUser.role
+        )
+      ) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code:
+              "ADMIN_MANAGEMENT_SEPARATED",
+            message:
+              "Administrator accounts must be managed through the Admin Dashboard."
+          }
+        });
+      }
+
       const updateData = {};
 
       if (body.name !== undefined) {
@@ -420,20 +445,8 @@ router.patch(
       if (
         body.department !== undefined
       ) {
-        updateData.department =
+        updateData.departmentCode =
           body.department;
-      }
-
-      if (body.role !== undefined) {
-        updateData.role =
-          body.role;
-      }
-
-      if (
-        body.roleCode !== undefined
-      ) {
-        updateData.roleCode =
-          body.roleCode;
       }
 
       if (body.status !== undefined) {
@@ -450,10 +463,48 @@ router.patch(
             updateData
           );
       } else {
-        Object.assign(
-          existingUser,
-          updateData
-        );
+        if (
+          updateData.departmentCode !==
+          undefined
+        ) {
+          existingUser.department =
+            updateData.departmentCode;
+
+          existingUser.departmentCode =
+            updateData.departmentCode;
+        }
+
+        if (
+          updateData.name !==
+          undefined
+        ) {
+          existingUser.name =
+            updateData.name;
+        }
+
+        if (
+          updateData.email !==
+          undefined
+        ) {
+          existingUser.email =
+            updateData.email;
+        }
+
+        if (
+          updateData.employeeId !==
+          undefined
+        ) {
+          existingUser.employeeId =
+            updateData.employeeId;
+        }
+
+        if (
+          updateData.status !==
+          undefined
+        ) {
+          existingUser.status =
+            updateData.status;
+        }
 
         updatedUser =
           existingUser;
@@ -567,20 +618,17 @@ router.delete(
       }
 
       if (
-        user.role ===
-          "SECURITY_ADMIN" ||
-        user.role ===
-          "SYSTEM_ADMIN" ||
-        user.email ===
-          "admin@enterprise.corp"
+        !isEmployeeRole(
+          user.roleCode || user.role
+        )
       ) {
         return res.status(403).json({
           success: false,
           error: {
             code:
-              "ADMIN_DELETE_BLOCKED",
+              "ADMIN_MANAGEMENT_SEPARATED",
             message:
-              "Administrator accounts cannot be deleted from employee management."
+              "Administrator accounts must be managed through the Admin Dashboard."
           }
         });
       }

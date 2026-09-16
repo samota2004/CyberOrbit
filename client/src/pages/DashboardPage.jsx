@@ -291,6 +291,7 @@ export const DashboardPage = ({
   onSelectIncident,
   onNavigateToSimulator,
   onNavigateToCopilot,
+  onNavigateToAdminManagement,
   onFreezeUser,
   onUnfreezeUser,
 }) => {
@@ -679,6 +680,34 @@ export const DashboardPage = ({
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 shrink-0">
+            <button
+              id="dashboard-btn-admin-management"
+              onClick={onNavigateToAdminManagement}
+              className={`
+                group
+                inline-flex items-center justify-center gap-2
+                px-5 py-3
+                border
+                text-[10px]
+                font-mono
+                uppercase
+                tracking-[0.12em]
+                text-[#D4AF37]
+                transition-all duration-300
+                hover:bg-[#D4AF37]
+                hover:text-black
+                ${
+                  isDark
+                    ? 'border-[#D4AF37]/40'
+                    : 'border-[#D4AF37]/60'
+                }
+              `}
+            >
+              <Users className="w-3.5 h-3.5" />
+              Admin Management
+              <ArrowUpRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </button>
+
             <button
               id="dashboard-btn-simulator"
               onClick={onNavigateToSimulator}

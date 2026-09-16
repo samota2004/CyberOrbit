@@ -2,8 +2,9 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "../models/prisma.js";
 import { db } from "../models/db.js";
-import { sendOtpEmail } from "./email-service.js";
-import { sendPasswordResetEmail } from "./email-service.js";
+import {
+  sendOtpEmail
+} from "./email-service.js";
 import {
   generateJwtToken
 } from "../middleware/auth.js";
@@ -12,7 +13,9 @@ const OTP_EXPIRY_MINUTES = 5;
 const OTP_MAX_ATTEMPTS = 5;
 
 export function sanitizeUser(user) {
-  if (!user) return null;
+  if (!user) {
+    return null;
+  }
 
   const {
     passwordHash,
@@ -26,15 +29,31 @@ export function sanitizeUser(user) {
 export function isAdminUser(user) {
   return (
     user &&
-    (user.roleCode === "SECURITY_ADMIN" ||
+    (
+      user.roleCode === "SECURITY_ADMIN" ||
       user.roleCode === "SYSTEM_ADMIN" ||
       user.role === "SECURITY_ADMIN" ||
-      user.role === "SYSTEM_ADMIN")
+      user.role === "SYSTEM_ADMIN"
+    )
+  );
+}
+
+export function isEmployeeUser(user) {
+  return (
+    user &&
+    (
+      user.roleCode === "EMPLOYEE" ||
+      user.roleCode === "MANAGER" ||
+      user.role === "EMPLOYEE" ||
+      user.role === "MANAGER"
+    )
   );
 }
 
 export function generateOtp() {
-  return String(crypto.randomInt(100000, 1000000));
+  return String(
+    crypto.randomInt(100000, 1000000)
+  );
 }
 
 export function hashOtp(otp) {
@@ -44,14 +63,25 @@ export function hashOtp(otp) {
     .digest("hex");
 }
 
-export async function loginWithPassword(email, password, req) {
-  const cleanEmail = String(email).trim().toLowerCase();
+export async function loginWithPassword(
+  email,
+  password,
+  req
+) {
+  const cleanEmail = String(email || "")
+    .trim()
+    .toLowerCase();
 
   const user = await prisma.user.findUnique({
-    where: { email: cleanEmail }
+    where: {
+      email: cleanEmail
+    }
   });
 
-  if (!user || user.status !== "ACTIVE" || !isAdminUser(user)) {
+  if (
+    !user ||
+    user.status !== "ACTIVE"
+  ) {
     return {
       success: false,
       status: 401,
@@ -82,7 +112,8 @@ export async function loginWithPassword(email, password, req) {
     db.appendAuditLog({
       userId: user.id,
       userName: user.name,
-      action: "ADMIN_LOGIN_FAILED",
+      userEmail: user.email,
+      action: "LOGIN_FAILED",
       category: "AUTH",
       severity: "WARNING",
       details: {
@@ -115,6 +146,7 @@ export async function loginWithPassword(email, password, req) {
   });
 
   const otp = generateOtp();
+
   const challengeHash = hashOtp(otp);
 
   const session = await prisma.mfaSession.create({
@@ -126,37 +158,48 @@ export async function loginWithPassword(email, password, req) {
       attempts: 0,
       maxAttempts: OTP_MAX_ATTEMPTS,
       expiresAt: new Date(
-        Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000
+        Date.now() +
+        OTP_EXPIRY_MINUTES * 60 * 1000
       )
     }
   });
 
   try {
-  await sendOtpEmail({
-    to: user.email,
-    name: user.name,
-    otp,
-    expiryMinutes: OTP_EXPIRY_MINUTES
-  });
+    await sendOtpEmail({
+      to: user.email,
+      name: user.name,
+      otp,
+      expiryMinutes: OTP_EXPIRY_MINUTES
+    });
 
-  console.log(`✅ OTP email sent to ${user.email}`);
-} catch (error) {
-  console.error("❌ OTP email sending failed:", error.message);
+    console.log(
+      `OTP email sent to ${user.email}`
+    );
+  } catch (error) {
+    console.error(
+      "OTP email sending failed:",
+      error.message
+    );
 
-  await prisma.mfaSession.update({
-    where: { id: session.id },
-    data: { status: "FAILED" }
-  });
+    await prisma.mfaSession.update({
+      where: {
+        id: session.id
+      },
+      data: {
+        status: "FAILED"
+      }
+    });
 
-  return {
-    success: false,
-    status: 503,
-    error: {
-      code: "OTP_EMAIL_FAILED",
-      message: "Unable to send OTP email. Please try again."
-    }
-  };
-}
+    return {
+      success: false,
+      status: 503,
+      error: {
+        code: "OTP_EMAIL_FAILED",
+        message:
+          "Unable to send OTP email. Please try again."
+      }
+    };
+  }
 
   return {
     success: true,
@@ -168,10 +211,17 @@ export async function loginWithPassword(email, password, req) {
   };
 }
 
-export async function verifyLoginOtp(challengeId, otp, req) {
-  const session = await prisma.mfaSession.findUnique({
-    where: { id: challengeId }
-  });
+export async function verifyLoginOtp(
+  challengeId,
+  otp,
+  req
+) {
+  const session =
+    await prisma.mfaSession.findUnique({
+      where: {
+        id: challengeId
+      }
+    });
 
   if (!session) {
     return {
@@ -190,15 +240,23 @@ export async function verifyLoginOtp(challengeId, otp, req) {
       status: 401,
       error: {
         code: "CHALLENGE_INVALID",
-        message: "MFA challenge is no longer valid."
+        message:
+          "MFA challenge is no longer valid."
       }
     };
   }
 
-  if (new Date() > new Date(session.expiresAt)) {
+  if (
+    new Date() >
+    new Date(session.expiresAt)
+  ) {
     await prisma.mfaSession.update({
-      where: { id: session.id },
-      data: { status: "EXPIRED" }
+      where: {
+        id: session.id
+      },
+      data: {
+        status: "EXPIRED"
+      }
     });
 
     return {
@@ -210,13 +268,21 @@ export async function verifyLoginOtp(challengeId, otp, req) {
       }
     };
   }
-if (session.attempts >= session.maxAttempts) {
-  await prisma.mfaSession.update({
-    where: { id: session.id },
-    data: { status: "FAILED" }
-  });
 
-  return {
+  if (
+    session.attempts >=
+    session.maxAttempts
+  ) {
+    await prisma.mfaSession.update({
+      where: {
+        id: session.id
+      },
+      data: {
+        status: "FAILED"
+      }
+    });
+
+    return {
       success: false,
       status: 429,
       error: {
@@ -230,14 +296,19 @@ if (session.attempts >= session.maxAttempts) {
     hashOtp(otp) === session.challengeHash;
 
   if (!valid) {
-    const attempts = session.attempts + 1;
+    const attempts =
+      session.attempts + 1;
 
     await prisma.mfaSession.update({
-      where: { id: session.id },
+      where: {
+        id: session.id
+      },
       data: {
         attempts,
         ...(attempts >= session.maxAttempts
-          ? { status: "FAILED"}
+          ? {
+              status: "FAILED"
+            }
           : {})
       }
     });
@@ -252,23 +323,31 @@ if (session.attempts >= session.maxAttempts) {
     };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId }
-  });
+  const user =
+    await prisma.user.findUnique({
+      where: {
+        id: session.userId
+      }
+    });
 
-  if (!user || user.status !== "ACTIVE" || !isAdminUser(user)) {
+  if (
+    !user ||
+    user.status !== "ACTIVE"
+  ) {
     return {
       success: false,
       status: 403,
       error: {
         code: "FORBIDDEN",
-        message: "Administrator account required."
+        message: "Active account required."
       }
     };
   }
 
   await prisma.mfaSession.update({
-    where: { id: session.id },
+    where: {
+      id: session.id
+    },
     data: {
       status: "VERIFIED",
       verifiedAt: new Date()
@@ -284,12 +363,14 @@ if (session.attempts >= session.maxAttempts) {
   db.appendAuditLog({
     userId: user.id,
     userName: user.name,
-    action: "ADMIN_MFA_VERIFIED",
+    userEmail: user.email,
+    action: "MFA_VERIFIED",
     category: "AUTH",
     severity: "INFO",
     details: {
       method: "OTP",
-      challengeId: session.id
+      challengeId: session.id,
+      role: user.roleCode
     },
     ipAddress:
       req.headers["x-forwarded-for"] ||
@@ -307,84 +388,115 @@ if (session.attempts >= session.maxAttempts) {
   };
 }
 
-export async function resendOtp(challengeId) {
-  const oldSession = await prisma.mfaSession.findUnique({
-    where: { id: challengeId }
-  });
+export async function resendOtp(
+  challengeId
+) {
+  const oldSession =
+    await prisma.mfaSession.findUnique({
+      where: {
+        id: challengeId
+      }
+    });
 
-  if (!oldSession || oldSession.status !== "PENDING") {
+  if (
+    !oldSession ||
+    oldSession.status !== "PENDING"
+  ) {
     return {
       success: false,
       status: 401,
       error: {
         code: "INVALID_CHALLENGE",
-        message: "MFA challenge is no longer valid."
+        message:
+          "MFA challenge is no longer valid."
       }
     };
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: oldSession.userId }
-  });
+  const user =
+    await prisma.user.findUnique({
+      where: {
+        id: oldSession.userId
+      }
+    });
 
-  if (!user || !isAdminUser(user)) {
+  if (
+    !user ||
+    user.status !== "ACTIVE"
+  ) {
     return {
       success: false,
       status: 403,
       error: {
         code: "FORBIDDEN",
-        message: "Administrator account required."
+        message: "Active account required."
       }
     };
   }
 
   await prisma.mfaSession.update({
-    where: { id: oldSession.id },
-    data: { status: "EXPIRED" }
+    where: {
+      id: oldSession.id
+    },
+    data: {
+      status: "EXPIRED"
+    }
   });
 
   const otp = generateOtp();
 
-  const newSession = await prisma.mfaSession.create({
-    data: {
-      userId: user.id,
-      challengeHash: hashOtp(otp),
-      status: "PENDING",
-      action: "LOGIN",
-      attempts: 0,
-      maxAttempts: OTP_MAX_ATTEMPTS,
-      expiresAt: new Date(
-        Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000
-      )
-    }
-  });
+  const newSession =
+    await prisma.mfaSession.create({
+      data: {
+        userId: user.id,
+        challengeHash: hashOtp(otp),
+        status: "PENDING",
+        action: "LOGIN",
+        attempts: 0,
+        maxAttempts: OTP_MAX_ATTEMPTS,
+        expiresAt: new Date(
+          Date.now() +
+          OTP_EXPIRY_MINUTES * 60 * 1000
+        )
+      }
+    });
 
   try {
-  await sendOtpEmail({
-    to: user.email,
-    name: user.name,
-    otp,
-    expiryMinutes: OTP_EXPIRY_MINUTES
-  });
+    await sendOtpEmail({
+      to: user.email,
+      name: user.name,
+      otp,
+      expiryMinutes: OTP_EXPIRY_MINUTES
+    });
 
-  console.log(`✅ Resend OTP email sent to ${user.email}`);
-} catch (error) {
-  console.error("❌ Resend OTP email failed:", error.message);
+    console.log(
+      `Resend OTP email sent to ${user.email}`
+    );
+  } catch (error) {
+    console.error(
+      "Resend OTP email failed:",
+      error.message
+    );
 
-  await prisma.mfaSession.update({
-    where: { id: newSession.id },
-    data: { status: "FAILED" }
-  });
+    await prisma.mfaSession.update({
+      where: {
+        id: newSession.id
+      },
+      data: {
+        status: "FAILED"
+      }
+    });
 
-  return {
-    success: false,
-    status: 503,
-    error: {
-      code: "OTP_EMAIL_FAILED",
-      message: "Unable to resend OTP email."
-    }
-  };
-}
+    return {
+      success: false,
+      status: 503,
+      error: {
+        code: "OTP_EMAIL_FAILED",
+        message:
+          "Unable to resend OTP email."
+      }
+    };
+  }
 
   return {
     success: true,

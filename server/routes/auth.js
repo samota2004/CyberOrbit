@@ -35,7 +35,8 @@ router.get("/admins", async (req, res) => {
         email: true,
         roleCode: true,
         departmentCode: true,
-        status: true
+        status: true,
+        isMainAdmin: true
       },
       orderBy: {
         name: "asc"
@@ -191,7 +192,6 @@ router.post("/forgot-password", async (req, res) => {
       }
     });
 
-    // Do not reveal whether an account exists.
     if (
       !user ||
       user.status !== "ACTIVE" ||
@@ -238,11 +238,11 @@ router.post("/forgot-password", async (req, res) => {
       });
 
       console.log(
-        `✅ Password reset email sent to ${user.email}`
+        `Password reset email sent to ${user.email}`
       );
     } catch (emailError) {
       console.error(
-        "❌ Password reset email failed:",
+        "Password reset email failed:",
         emailError.message
       );
 
@@ -346,7 +346,8 @@ router.post("/reset-password", async (req, res) => {
           id: resetRecord.userId
         },
         data: {
-          passwordHash: hashedPassword
+          passwordHash: hashedPassword,
+          passwordChangedAt: new Date()
         }
       }),
 

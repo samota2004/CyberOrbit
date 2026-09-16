@@ -5,14 +5,20 @@ class UserRepository {
     try {
       const records = await prisma.user.findMany({
         include: {
-          devices: true
+          devices: true,
+          department: true
         }
       });
 
       return records.map((r) =>
         this.mapToDomain(r)
       );
-    } catch {
+    } catch (error) {
+      console.error(
+        "UserRepository.findAll:",
+        error?.message || error
+      );
+
       return [];
     }
   }
@@ -27,15 +33,324 @@ class UserRepository {
           ]
         },
         include: {
-          devices: true
+          devices: true,
+          department: true
         }
       });
 
       return r
         ? this.mapToDomain(r)
         : null;
-    } catch {
+    } catch (error) {
+      console.error(
+        "UserRepository.findById:",
+        error?.message || error
+      );
+
       return null;
+    }
+  }
+
+  async findByEmail(email) {
+    try {
+      const normalizedEmail =
+        String(email || "")
+          .trim()
+          .toLowerCase();
+
+      if (!normalizedEmail) {
+        return null;
+      }
+
+      const r = await prisma.user.findFirst({
+        where: {
+          email: normalizedEmail
+        },
+        include: {
+          department: true
+        }
+      });
+
+      return r
+        ? this.mapToDomain(r)
+        : null;
+    } catch (error) {
+      console.error(
+        "UserRepository.findByEmail:",
+        error?.message || error
+      );
+
+      return null;
+    }
+  }
+
+  async create(data) {
+    try {
+      const employeeId =
+        String(data.employeeId || "").trim();
+
+      const email =
+        String(data.email || "")
+          .trim()
+          .toLowerCase();
+
+      const departmentCode =
+        data.departmentCode ||
+        data.department ||
+        "ENGINEERING";
+
+      const roleCode =
+        data.roleCode ||
+        data.role ||
+        "EMPLOYEE";
+
+      const status =
+        data.status ||
+        "ACTIVE";
+
+      const existingEmployee =
+        await prisma.user.findFirst({
+          where: {
+            employeeId
+          }
+        });
+
+      if (existingEmployee) {
+        const error =
+          new Error(
+            "A user with this employee ID already exists."
+          );
+
+        error.code =
+          "EMPLOYEE_ID_ALREADY_EXISTS";
+
+        throw error;
+      }
+
+      const existingEmail =
+        await prisma.user.findFirst({
+          where: {
+            email
+          }
+        });
+
+      if (existingEmail) {
+        const error =
+          new Error(
+            "A user with this email already exists."
+          );
+
+        error.code =
+          "EMAIL_ALREADY_EXISTS";
+
+        throw error;
+      }
+
+      const record =
+        await prisma.user.create({
+          data: {
+            id:
+              data.id ||
+              `user-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}`,
+
+            employeeId,
+
+            name:
+              String(data.name || "").trim(),
+
+            email,
+
+            departmentCode,
+
+            roleCode,
+
+            status,
+
+            riskScore:
+              Number.isFinite(
+                Number(data.currentRiskScore)
+              )
+                ? Number(data.currentRiskScore)
+                : 15,
+
+            riskLevel:
+              data.currentRiskLevel ||
+              "LOW",
+
+            trustScore:
+              Number.isFinite(
+                Number(data.currentTrustScore)
+              )
+                ? Number(data.currentTrustScore)
+                : 98
+          },
+
+          include: {
+            devices: true,
+            department: true
+          }
+        });
+
+      return this.mapToDomain(record);
+    } catch (error) {
+      console.error(
+        "UserRepository.create:",
+        error?.message || error
+      );
+
+      throw error;
+    }
+  }
+
+  async update(id, data) {
+    try {
+      const existing =
+        await prisma.user.findFirst({
+          where: {
+            OR: [
+              { id },
+              { employeeId: id }
+            ]
+          }
+        });
+
+      if (!existing) {
+        return null;
+      }
+
+      const updateData = {};
+
+      if (data.name !== undefined) {
+        updateData.name =
+          String(data.name).trim();
+      }
+
+      if (data.email !== undefined) {
+        updateData.email =
+          String(data.email)
+            .trim()
+            .toLowerCase();
+      }
+
+      if (data.employeeId !== undefined) {
+        updateData.employeeId =
+          String(data.employeeId).trim();
+      }
+
+      if (
+        data.department !== undefined ||
+        data.departmentCode !== undefined
+      ) {
+        updateData.departmentCode =
+          data.departmentCode ||
+          data.department;
+      }
+
+      if (
+        data.role !== undefined ||
+        data.roleCode !== undefined
+      ) {
+        updateData.roleCode =
+          data.roleCode ||
+          data.role;
+      }
+
+      if (data.status !== undefined) {
+        updateData.status =
+          data.status;
+      }
+
+      if (
+        data.currentRiskScore !== undefined ||
+        data.riskScore !== undefined
+      ) {
+        updateData.riskScore =
+          Number(
+            data.riskScore ??
+            data.currentRiskScore
+          );
+      }
+
+      if (
+        data.currentRiskLevel !== undefined ||
+        data.riskLevel !== undefined
+      ) {
+        updateData.riskLevel =
+          data.riskLevel ||
+          data.currentRiskLevel;
+      }
+
+      if (
+        data.currentTrustScore !== undefined ||
+        data.trustScore !== undefined
+      ) {
+        updateData.trustScore =
+          Number(
+            data.trustScore ??
+            data.currentTrustScore
+          );
+      }
+
+      const record =
+        await prisma.user.update({
+          where: {
+            id: existing.id
+          },
+
+          data: updateData,
+
+          include: {
+            devices: true,
+            department: true
+          }
+        });
+
+      return this.mapToDomain(record);
+    } catch (error) {
+      console.error(
+        "UserRepository.update:",
+        error?.message || error
+      );
+
+      throw error;
+    }
+  }
+
+  async delete(id) {
+    try {
+      const existing =
+        await prisma.user.findFirst({
+          where: {
+            OR: [
+              { id },
+              { employeeId: id }
+            ]
+          }
+        });
+
+      if (!existing) {
+        return null;
+      }
+
+      await prisma.user.delete({
+        where: {
+          id: existing.id
+        }
+      });
+
+      return {
+        id: existing.id,
+        employeeId: existing.employeeId
+      };
+    } catch (error) {
+      console.error(
+        "UserRepository.delete:",
+        error?.message || error
+      );
+
+      throw error;
     }
   }
 
@@ -64,18 +379,27 @@ class UserRepository {
       return await prisma.trustHistory.create({
         data: {
           userId: user.id,
+
           trustScore:
             Number(trustScore) || 0,
+
           riskScore:
             Number(riskScore) || 0,
+
           reason:
             reason ||
             "Trust score dynamic update",
+
           delta:
             Number(delta) || 0
         }
       });
-    } catch {
+    } catch (error) {
+      console.error(
+        "UserRepository.recordTrustHistory:",
+        error?.message || error
+      );
+
       return null;
     }
   }
@@ -101,19 +425,30 @@ class UserRepository {
         return null;
       }
 
-      return await prisma.user.update({
-        where: {
-          id: user.id
-        },
-        data: {
-          riskScore:
-            Number(riskScore) || 0,
-          trustScore:
-            Number(trustScore) || 0,
-          riskLevel:
-            riskLevel || "LOW"
-        }
-      });
+      const record =
+        await prisma.user.update({
+          where: {
+            id: user.id
+          },
+
+          data: {
+            riskScore:
+              Number(riskScore) || 0,
+
+            trustScore:
+              Number(trustScore) || 0,
+
+            riskLevel:
+              riskLevel || "LOW"
+          },
+
+          include: {
+            devices: true,
+            department: true
+          }
+        });
+
+      return this.mapToDomain(record);
     } catch (error) {
       console.warn(
         "Risk/trust database update warning:",
@@ -140,60 +475,90 @@ class UserRepository {
         return null;
       }
 
-      return await prisma.user.update({
-        where: {
-          id: user.id
-        },
-        data: {
-          status
-        }
-      });
-    } catch {
+      const record =
+        await prisma.user.update({
+          where: {
+            id: user.id
+          },
+
+          data: {
+            status
+          },
+
+          include: {
+            devices: true,
+            department: true
+          }
+        });
+
+      return this.mapToDomain(record);
+    } catch (error) {
+      console.error(
+        "UserRepository.updateStatus:",
+        error?.message || error
+      );
+
       return null;
     }
   }
 
   mapToDomain(r) {
+    if (!r) {
+      return null;
+    }
+
     return {
-      id: r.id,
-      employeeId: r.employeeId,
-      name: r.name,
-      email: r.email,
-      department: r.department,
-      role: r.roleCode || r.role,
+      id:
+        r.id,
+
+      employeeId:
+        r.employeeId,
+
+      name:
+        r.name,
+
+      email:
+        r.email,
+
+      departmentCode:
+        r.departmentCode,
+
+      department:
+        r.department?.code ||
+        r.departmentCode,
+
+      departmentName:
+        r.department?.name ||
+        r.departmentCode,
+
+      roleCode:
+        r.roleCode,
+
+      role:
+        r.roleCode,
+
       currentRiskScore:
-        r.riskScore ?? 15,
+        Number(r.riskScore ?? 15),
+
       currentRiskLevel:
-        r.riskLevel ?? "LOW",
+        r.riskLevel ||
+        "LOW",
+
       currentTrustScore:
-        r.trustScore ?? 95,
+        Number(r.trustScore ?? 98),
+
       status:
-        r.status || "ACTIVE",
-      baseline:
-        r.baseline
-          ? typeof r.baseline === "string"
-            ? JSON.parse(r.baseline)
-            : r.baseline
-          : {
-              normalWorkHours: {
-                start: 8,
-                end: 18
-              },
-              allowedDepartments: [
-                r.department
-              ],
-              typicalLocations: [
-                "HQ"
-              ],
-              maxDownloadVolumeMB: 500,
-              normalAccessDays: [
-                1,
-                2,
-                3,
-                4,
-                5
-              ]
-            }
+        r.status ||
+        "ACTIVE",
+
+      createdAt:
+        r.createdAt,
+
+      updatedAt:
+        r.updatedAt,
+
+      devices:
+        r.devices || []
     };
   }
 }
@@ -238,6 +603,7 @@ class DeviceRepository {
         where: {
           id: existing.id
         },
+
         data: {
           status: "REVOKED",
           isTrusted: false
@@ -266,13 +632,16 @@ class DeviceRepository {
         where: {
           id: existing.id
         },
+
         data: {
           trustScore:
             Number(trustScore) || 0,
+
           isTrusted:
             typeof isTrusted === "boolean"
               ? isTrusted
               : trustScore >= 60,
+
           status:
             status ||
             (trustScore >= 60
@@ -345,73 +714,100 @@ class IncidentRepository {
           .slice(-5)}`;
 
       let resolvedUserId =
-        data.userId || "user-001";
+        data.userId ||
+        "user-001";
 
       const user =
         await prisma.user.findFirst({
           where: {
             OR: [
               { id: data.userId },
-              {
-                employeeId: data.userId
-              }
+              { employeeId: data.userId }
             ]
           }
         });
 
       if (user) {
-        resolvedUserId = user.id;
+        resolvedUserId =
+          user.id;
       }
 
       return await prisma.incident.create({
         data: {
           incidentId,
+
           title:
             data.title ||
             "Security Incident Alert",
+
           description:
             data.description ||
             "Automated policy enforcement event",
+
           severity:
-            data.severity || "MEDIUM",
+            data.severity ||
+            "MEDIUM",
+
           status:
-            data.status || "NEW",
-          userId: resolvedUserId,
+            data.status ||
+            "NEW",
+
+          userId:
+            resolvedUserId,
+
           userEmail:
             data.userEmail ||
             user?.email ||
             "security@enterprise.corp",
+
           riskScore:
             Number(data.riskScore) || 50,
+
           contributingFactors:
             Array.isArray(
               data.contributingFactors
             )
               ? data.contributingFactors
               : [],
+
           mitreTechnique:
-            data.mitreTechnique || null,
+            data.mitreTechnique ||
+            null,
+
           aiExplanation:
-            data.aiExplanation || null,
+            data.aiExplanation ||
+            null,
+
           recommendedAction:
-            data.recommendedAction || null,
+            data.recommendedAction ||
+            null,
+
           resolutionNotes:
             data.resolutionNotes ||
             data.analystNotes ||
             null,
+
           resolvedBy:
-            data.resolvedBy || null,
+            data.resolvedBy ||
+            null,
+
           resolvedAt:
             data.resolvedAt
               ? new Date(data.resolvedAt)
               : null,
+
           createdAt:
             data.timestamp
               ? new Date(data.timestamp)
               : new Date()
         }
       });
-    } catch {
+    } catch (error) {
+      console.warn(
+        "Incident database sync warning:",
+        error?.message || error
+      );
+
       return data;
     }
   }
@@ -433,13 +829,18 @@ class IncidentRepository {
         where: {
           id: existing.id
         },
+
         data: {
           status: "RESOLVED",
+
           resolutionNotes:
             resolutionNotes ||
             "Resolved by security admin",
+
           resolvedBy,
-          resolvedAt: new Date()
+
+          resolvedAt:
+            new Date()
         }
       });
     } catch {
@@ -463,8 +864,10 @@ class IncidentRepository {
         where: {
           id: existing.id
         },
+
         data: {
-          aiExplanation: explanation
+          aiExplanation:
+            explanation
         }
       });
     } catch {
@@ -478,6 +881,7 @@ class AuditLogRepository {
     try {
       return await prisma.auditLog.findMany({
         take: limit,
+
         orderBy: {
           timestamp: "desc"
         }
@@ -505,21 +909,32 @@ class AuditLogRepository {
       return await prisma.auditLog.create({
         data: {
           userId:
-            data.userId || "user-001",
+            data.userId ||
+            "user-001",
+
           userEmail:
             data.userEmail ||
             "unknown@enterprise.local",
+
           action:
             data.action ||
             "UNKNOWN_ACTION",
+
           category:
-            data.category || "SYSTEM",
+            data.category ||
+            "SYSTEM",
+
           severity:
-            data.severity || "INFO",
-          details: normalizedDetails,
+            data.severity ||
+            "INFO",
+
+          details:
+            normalizedDetails,
+
           ip:
             data.ip ||
             "127.0.0.1",
+
           metadata:
             normalizedMetadata
         }
@@ -543,6 +958,7 @@ class PolicyRepository {
           where: {
             isActive: true
           },
+
           orderBy: {
             updatedAt: "desc"
           }
@@ -568,28 +984,36 @@ class PolicyRepository {
           where: {
             id: existing.id
           },
+
           data: {
             lowRiskMax:
               config.lowRiskMax ??
               existing.lowRiskMax,
+
             mediumRiskMax:
               config.mediumRiskMax ??
               existing.mediumRiskMax,
+
             highRiskMax:
               config.highRiskMax ??
               existing.highRiskMax,
+
             veryHighRiskMax:
               config.veryHighRiskMax ??
               existing.veryHighRiskMax,
+
             criticalThreshold:
               config.criticalThreshold ??
               existing.criticalThreshold,
+
             mfaThreshold:
               config.mfaThreshold ??
               existing.mfaThreshold,
+
             approvalThreshold:
               config.approvalThreshold ??
               existing.approvalThreshold,
+
             restrictionThreshold:
               config.restrictionThreshold ??
               existing.restrictionThreshold
@@ -601,23 +1025,41 @@ class PolicyRepository {
         data: {
           name:
             "Active Enterprise Zero Trust Policy",
-          isActive: true,
+
+          isActive:
+            true,
+
           lowRiskMax:
-            config.lowRiskMax ?? 25,
+            config.lowRiskMax ??
+            25,
+
           mediumRiskMax:
-            config.mediumRiskMax ?? 50,
+            config.mediumRiskMax ??
+            50,
+
           highRiskMax:
-            config.highRiskMax ?? 75,
+            config.highRiskMax ??
+            75,
+
           veryHighRiskMax:
-            config.veryHighRiskMax ?? 90,
+            config.veryHighRiskMax ??
+            90,
+
           criticalThreshold:
-            config.criticalThreshold ?? 90,
+            config.criticalThreshold ??
+            90,
+
           mfaThreshold:
-            config.mfaThreshold ?? 40,
+            config.mfaThreshold ??
+            40,
+
           approvalThreshold:
-            config.approvalThreshold ?? 60,
+            config.approvalThreshold ??
+            60,
+
           restrictionThreshold:
-            config.restrictionThreshold ?? 75
+            config.restrictionThreshold ??
+            75
         }
       });
     } catch {

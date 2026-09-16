@@ -144,8 +144,8 @@ model User {
   departmentCode    DepartmentType @default(ENGINEERING)
   department        Department?    @relation(fields: [departmentCode], references: [code])
   status            AccountStatus  @default(ACTIVE)
+  isMainAdmin       Boolean        @default(false)
 
-  // Real-time risk & trust metrics
   riskScore  Float         @default(10)
   trustScore Float         @default(90)
   riskLevel  EventSeverity @default(LOW)
@@ -153,7 +153,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   behaviorProfile     BehaviorProfile?
   devices             Device[]
   activityEvents      ActivityEvent[]
