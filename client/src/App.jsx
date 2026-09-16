@@ -4,7 +4,7 @@ import { TopBar } from './components/TopBar';
 import { CopilotModal } from './components/CopilotModal';
 import { ShieldAlert, CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
-
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 // Public Pages
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
@@ -27,12 +27,32 @@ import { SettingsPage } from './pages/SettingsPage';
 
 // Route helper functions
 const pathToTab = (pathname) => {
-  const clean = (pathname || '').replace(/^\/+|\/+$/g, '').toLowerCase();
-  if (!clean || clean === '') return 'landing';
+  const clean = (pathname || '')
+    .replace(/^\/+|\/+$/g, '')
+    .toLowerCase();
+
+  if (!clean) return 'landing';
   if (clean === 'login') return 'login';
+  if (clean === 'reset-password') return 'reset-password';
+
   if (clean === 'dashboard') return 'dashboard';
-  if (clean === 'employee-dashboard' || clean === 'my-trust' || clean === 'employee-portal' || clean === 'trust-portal') return 'employee-dashboard';
-  if (clean === 'employees' || clean === 'employee-mgmt' || clean === 'users') return 'employees';
+  if (
+    clean === 'employee-dashboard' ||
+    clean === 'my-trust' ||
+    clean === 'employee-portal' ||
+    clean === 'trust-portal'
+  ) {
+    return 'employee-dashboard';
+  }
+
+  if (
+    clean === 'employees' ||
+    clean === 'employee-mgmt' ||
+    clean === 'users'
+  ) {
+    return 'employees';
+  }
+
   if (clean === 'departments') return 'departments';
   if (clean === 'devices') return 'devices';
   if (clean === 'risk-analysis' || clean === 'ai-risk') return 'risk-analysis';
@@ -44,12 +64,15 @@ const pathToTab = (pathname) => {
   if (clean === 'audit-logs') return 'audit-logs';
   if (clean === 'simulator') return 'simulator';
   if (clean === 'settings') return 'settings';
+
   return 'landing';
 };
 
 const tabToPath = (tab) => {
   if (tab === 'landing') return '/';
   if (tab === 'login') return '/login';
+  if (tab === 'reset-password') return '/reset-password';
+
   return `/${tab}`;
 };
 
@@ -81,17 +104,22 @@ export default function App() {
 
   // Routing State - defaults to landing on public access
   const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window === 'undefined') return 'landing';
-    const initialPathTab = pathToTab(window.location.pathname);
-    const authed = Boolean(localStorage.getItem('zero_trust_token'));
-    if (!authed) {
-      if (initialPathTab === 'login') return 'login';
-      return 'landing';
-    }
-    // Authenticated
-    if (initialPathTab === 'login') return 'dashboard';
-    return initialPathTab;
-  });
+  if (typeof window === 'undefined') return 'landing';
+
+  const initialPathTab = pathToTab(window.location.pathname);
+  const authed = Boolean(localStorage.getItem('zero_trust_token'));
+
+  if (!authed) {
+    if (initialPathTab === 'login') return 'login';
+    if (initialPathTab === 'reset-password') return 'reset-password';
+
+    return 'landing';
+  }
+
+  if (initialPathTab === 'login') return 'dashboard';
+
+  return initialPathTab;
+});
 
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -128,66 +156,90 @@ export default function App() {
 
   // Navigation controller ensuring route protection & URL synchronization
   const handleNavigate = useCallback((tab) => {
-    const authed = Boolean(localStorage.getItem('zero_trust_token'));
-    let targetTab = tab;
+  const authed = Boolean(localStorage.getItem('zero_trust_token'));
+  let targetTab = tab;
 
-    if (!authed) {
-      // Unauthenticated users can only see landing or login
-      if (tab !== 'landing' && tab !== 'login') {
-        targetTab = 'landing';
-      }
-    } else {
-      // Authenticated admins accessing /login redirect to /dashboard
-      if (tab === 'login') {
-        targetTab = 'dashboard';
-      }
+  if (!authed) {
+    if (
+      tab !== 'landing' &&
+      tab !== 'login' &&
+      tab !== 'reset-password'
+    ) {
+      targetTab = 'landing';
     }
+  } else {
+    if (tab === 'login' || tab === 'reset-password') {
+      targetTab = tab === 'reset-password'
+        ? 'reset-password'
+        : 'dashboard';
+    }
+  }
 
-    setActiveTab(targetTab);
-    const targetPath = tabToPath(targetTab);
-    if (typeof window !== 'undefined' && window.location.pathname !== targetPath) {
-      window.history.pushState({}, '', targetPath);
-    }
-  }, []);
+  setActiveTab(targetTab);
+
+  const targetPath = tabToPath(targetTab);
+
+  if (
+    typeof window !== 'undefined' &&
+    window.location.pathname !== targetPath
+  ) {
+    window.history.pushState({}, '', targetPath);
+  }
+}, []);
 
   // Handle browser back/forward buttons
   useEffect(() => {
-    const handlePopState = () => {
-      const pathTab = pathToTab(window.location.pathname);
-      const authed = Boolean(localStorage.getItem('zero_trust_token'));
-      if (!authed) {
-        if (pathTab === 'login') {
-          setActiveTab('login');
-        } else {
-          setActiveTab('landing');
-          if (window.location.pathname !== '/') {
-            window.history.replaceState({}, '', '/');
-          }
-        }
+  const handlePopState = () => {
+    const pathTab = pathToTab(window.location.pathname);
+    const authed = Boolean(localStorage.getItem('zero_trust_token'));
+
+    if (!authed) {
+      if (pathTab === 'login') {
+        setActiveTab('login');
+      } else if (pathTab === 'reset-password') {
+        setActiveTab('reset-password');
       } else {
-        if (pathTab === 'login') {
-          setActiveTab('dashboard');
-          window.history.replaceState({}, '', '/dashboard');
-        } else {
-          setActiveTab(pathTab);
+        setActiveTab('landing');
+
+        if (window.location.pathname !== '/') {
+          window.history.replaceState({}, '', '/');
         }
       }
-    };
+    } else {
+      if (pathTab === 'login') {
+        setActiveTab('dashboard');
+        window.history.replaceState({}, '', '/dashboard');
+      } else if (pathTab === 'reset-password') {
+        setActiveTab('reset-password');
+      } else {
+        setActiveTab(pathTab);
+      }
+    }
+  };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  window.addEventListener('popstate', handlePopState);
+
+  return () => {
+    window.removeEventListener('popstate', handlePopState);
+  };
+}, []);
 
   // Enforce route protection on initial mount
   useEffect(() => {
-    const authed = Boolean(localStorage.getItem('zero_trust_token'));
-    const currentTab = pathToTab(window.location.pathname);
-    if (!authed && currentTab !== 'landing' && currentTab !== 'login') {
-      handleNavigate('landing');
-    } else if (authed && currentTab === 'login') {
-      handleNavigate('dashboard');
-    }
-  }, [handleNavigate]);
+  const authed = Boolean(localStorage.getItem('zero_trust_token'));
+  const currentTab = pathToTab(window.location.pathname);
+
+  if (
+    !authed &&
+    currentTab !== 'landing' &&
+    currentTab !== 'login' &&
+    currentTab !== 'reset-password'
+  ) {
+    handleNavigate('landing');
+  } else if (authed && currentTab === 'login') {
+    handleNavigate('dashboard');
+  }
+}, [handleNavigate]);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('zero_trust_token');
@@ -549,16 +601,15 @@ export default function App() {
     setUsers(prev => prev.filter(u => u.id !== userId));
   };
 
-  // 1. PUBLIC LANDING PAGE (FIRST PAGE)
-  if (activeTab === 'landing') {
-    return (
-      <LandingPage 
-        onLogin={() => handleNavigate('login')}
-        onNavigateToLogin={() => handleNavigate('login')}
-      />
-    );
-  }
-
+// 1. PUBLIC LANDING PAGE
+if (activeTab === 'landing') {
+  return (
+    <LandingPage
+      onLogin={() => handleNavigate('login')}
+      onNavigateToLogin={() => handleNavigate('login')}
+    />
+  );
+}
   // 2. PUBLIC ADMIN-ONLY LOGIN & MFA PAGE
   if (activeTab === 'login') {
     return (
@@ -569,6 +620,10 @@ export default function App() {
       />
     );
   }
+  // 3. PUBLIC RESET PASSWORD PAGE
+if (activeTab === 'reset-password') {
+  return <ResetPasswordPage />;
+}
 
   // If user is unauthenticated, redirect to LandingPage
   if (!isAuthenticated) {

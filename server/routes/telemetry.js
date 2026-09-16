@@ -1,13 +1,36 @@
 import { Router } from "express";
 import { db } from "../models/db.js";
 import { policyEngine } from "../../cyber/policy-engine/policy-engine.js";
-import { TelemetryNormalizer } from "../../cyber/telemetry/telemetry.js";;
-import { mlEngine } from "../../ml/inference/ml-engine.js";
+import { TelemetryNormalizer } from "../../cyber/telemetry/telemetry.js";
+import { predictWithMLService } from "../services/ml-service.js";
+import {
+  updateFeatureState,
+  getUserDayFeatures,
+  featureState
+} from "../services/ml-feature-aggregator.js";
 import { sseManager } from "../services/sse.js";
 
 const router = Router();
 
-router.post("/ingest", (req, res) => {
+function getRiskLevel(riskScore) {
+  const risk = Number(riskScore) || 0;
+
+  if (risk < 40) {
+    return "LOW";
+  }
+
+  if (risk < 60) {
+    return "MEDIUM";
+  }
+
+  if (risk < 90) {
+    return "HIGH";
+  }
+
+  return "CRITICAL";
+}
+
+router.post("/ingest", async (req, res) => {
   try {
     const normalized =
       TelemetryNormalizer.normalize(
@@ -19,7 +42,7 @@ router.post("/ingest", (req, res) => {
         normalized.userId
       ) ||
       db.users.find(
-        u =>
+        (u) =>
           u.email?.toLowerCase() ===
             String(
               normalized.userId || ""
@@ -59,22 +82,9 @@ router.post("/ingest", (req, res) => {
             )
           : undefined;
 
-    const features =
-      mlEngine.extractFeatures(
-        normalized,
-        targetUser,
-        targetDevice,
-        targetResource
-      );
-
-    const mlAnomalyScore =
-      mlEngine.predictAnomalyScore(
-        features
-      );
-
     const event = {
       id: `evt-tel-${Date.now()}`,
-      eventId: `evt-tel-${Date.now()}`,
+      eventId: normalized.eventId,
       ...normalized,
       userId: targetUser.id,
       userEmail: targetUser.email,
@@ -86,17 +96,64 @@ router.post("/ingest", (req, res) => {
         normalized.deviceId,
       deviceName:
         targetDevice?.deviceName ||
-        targetDevice?.name,
+        targetDevice?.name ||
+        normalized.deviceName,
       resourceId:
         targetResource?.id ||
         normalized.resourceId,
       resourceName:
-        targetResource?.name,
-      mlAnomalyScore,
+        targetResource?.name ||
+        normalized.resourceName,
       timestamp:
         normalized.timestamp ||
         new Date().toISOString()
     };
+
+    const aggregation =
+      updateFeatureState(
+        featureState,
+        event
+      );
+
+    const userDayFeatures =
+      getUserDayFeatures(
+        featureState,
+        targetUser.id,
+        aggregation.date
+      );
+
+    const mlResult =
+      await predictWithMLService(
+        targetUser.id,
+        userDayFeatures.features
+      );
+
+    event.mlThreatProbability =
+      mlResult.threat_probability;
+
+    event.mlAnomalyScore =
+      mlResult.threat_probability;
+
+    event.contextualRiskScore =
+      mlResult.contextual_risk_score;
+
+    event.riskScore =
+      mlResult.risk_score;
+
+    event.trustScore =
+      mlResult.trust_score;
+
+    event.policyAction =
+      mlResult.policy_action;
+
+    event.policyReason =
+      mlResult.policy_reason;
+
+    event.xaiReasons =
+      mlResult.xai_reasons;
+
+    event.isAnomalous =
+      mlResult.risk_score >= 40;
 
     const decision =
       policyEngine.evaluateAccess(
@@ -107,23 +164,40 @@ router.post("/ingest", (req, res) => {
       );
 
     event.riskContribution =
-      decision.evaluation.riskScore;
+      mlResult.risk_score;
 
-    event.isAnomalous =
-      mlAnomalyScore > 0.4;
+    const riskLevel =
+      getRiskLevel(
+        mlResult.risk_score
+      );
+
+    db.updateUserRiskAndTrust(
+      targetUser.id,
+      mlResult.risk_score,
+      mlResult.trust_score,
+      riskLevel
+    );
 
     db.appendActivityEvent(event);
 
-    sseManager.broadcastTelemetry({
-      event,
-      decision
-    });
+    sseManager.broadcast(
+      "TELEMETRY_EVENT",
+      {
+        event,
+        decision,
+        ml: mlResult,
+        features:
+          userDayFeatures.features
+      }
+    );
 
-    res.json({
+    return res.json({
       success: true,
       event,
       decision,
-      mlAnomalyScore
+      ml: mlResult,
+      features:
+        userDayFeatures.features
     });
   } catch (error) {
     console.error(
@@ -131,7 +205,7 @@ router.post("/ingest", (req, res) => {
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: {
         code: "TELEMETRY_ERROR",

@@ -274,6 +274,109 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password, newPassword } = req.body;
+
+    const finalPassword = password || newPassword;
+
+    if (!token || !finalPassword) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "MISSING_RESET_DATA",
+          message: "Reset token and new password are required."
+        }
+      });
+    }
+
+    if (String(finalPassword).length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "WEAK_PASSWORD",
+          message: "Password must contain at least 8 characters."
+        }
+      });
+    }
+
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(String(token))
+      .digest("hex");
+
+    const resetRecord = await prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: {
+          gt: new Date()
+        }
+      },
+      include: {
+        user: true
+      }
+    });
+
+    if (
+      !resetRecord ||
+      !resetRecord.user ||
+      resetRecord.user.status !== "ACTIVE" ||
+      !isAdminUser(resetRecord.user)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_RESET_TOKEN",
+          message: "This password reset link is invalid or expired."
+        }
+      });
+    }
+
+    const bcrypt = await import("bcryptjs");
+
+    const hashedPassword = await bcrypt.hash(
+      String(finalPassword),
+      12
+    );
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: {
+          id: resetRecord.userId
+        },
+        data: {
+          passwordHash: hashedPassword
+        }
+      }),
+
+      prisma.passwordResetToken.update({
+        where: {
+          id: resetRecord.id
+        },
+        data: {
+          usedAt: new Date()
+        }
+      })
+    ]);
+
+    return res.json({
+      success: true,
+      message: "Password reset successfully. You can now log in."
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "RESET_PASSWORD_ERROR",
+        message: "Unable to reset password."
+      }
+    });
+  }
+});
+
 router.get("/me", async (req, res) => {
   try {
     const user = await getRequesterUser(req);

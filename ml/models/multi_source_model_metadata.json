@@ -1,0 +1,33 @@
+{
+  "model_name": "Multi-Source UEBA Random Forest",
+  "dataset": "CERT Insider Threat Dataset r4.2",
+  "data_sources": [
+    "logon",
+    "device",
+    "file",
+    "http",
+    "email"
+  ],
+  "aggregation_level": "user-day",
+  "feature_count": 21,
+  "operating_threshold": 0.85,
+  "training_rows": 231316,
+  "validation_rows": 49568,
+  "test_rows": 49568,
+  "validation_threats": 284,
+  "test_threats": 149,
+  "test_metrics": {
+    "Accuracy": 0.9970142027114267,
+    "Precision": 0.5070422535211268,
+    "Recall": 0.24161073825503357,
+    "F1": 0.32727272727272727,
+    "ROC_AUC": 0.9670343892677205,
+    "PR_AUC": 0.35081125522129986,
+    "FPR": 0.0007082296282806208,
+    "FNR": 0.7583892617449665,
+    "TP": 36.0,
+    "FP": 35.0,
+    "TN": 49384.0,
+    "FN": 113.0
+  }
+}

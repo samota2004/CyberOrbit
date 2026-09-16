@@ -35,10 +35,8 @@ export const XaiExplanationCard = ({ evaluation, onAskCopilot }) => {
 
     return (
       <div className="bg-[#111111] border border-[#D4AF37]/30 p-6 shadow-2xl text-gray-100 relative overflow-hidden transition-all">
-        {/* Top Gold Accent Border */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#D4AF37]"/>
 
-        {/* Header bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#D4AF37]/20">
           <div className="flex items-center gap-3">
             <div className="p-2 border border-[#D4AF37]/40 bg-black">
@@ -65,37 +63,8 @@ export const XaiExplanationCard = ({ evaluation, onAskCopilot }) => {
           </div>
         </div>
 
-        {/* Main Grid: Score dials & Natural language summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 py-5 items-center">
-          <div className="flex items-center justify-around bg-black p-4 border border-[#D4AF37]/20">
-            <div className="text-center">
-              <span className="text-[9px] font-mono uppercase tracking-widest text-gray-500 block mb-1">Risk Index</span>
-              <span className="text-2xl font-mono font-bold text-[#D4AF37]">
-                {evaluation.riskScore}
-                <span className="text-xs text-gray-500 font-normal">/100</span>
-              </span>
-            </div>
-
-            <div className="h-8 w-px bg-[#D4AF37]/20"/>
-
-            <div className="text-center">
-              <span className="text-[9px] font-mono uppercase tracking-widest text-gray-500 block mb-1">Anomaly</span>
-              <span className="text-xl font-mono font-bold text-gray-200">
-                {((evaluation.mlAnomalyScore ?? 0) * 100).toFixed(0)}%
-              </span>
-            </div>
-
-            <div className="h-8 w-px bg-[#D4AF37]/20"/>
-
-            <div className="text-center">
-              <span className="text-[9px] font-mono uppercase tracking-widest text-gray-500 block mb-1">Trust</span>
-              <span className="text-xl font-mono font-bold text-[#D4AF37]">
-                {evaluation.trustScore}
-              </span>
-            </div>
-          </div>
-
-          <div className="md:col-span-3 bg-black p-4 border border-[#D4AF37]/20 flex flex-col justify-center">
+        <div className="py-5">
+          <div className="bg-black p-4 border border-[#D4AF37]/20 flex flex-col justify-center">
             <span className="text-[10px] font-mono uppercase tracking-wider text-[#D4AF37] font-semibold mb-1 flex items-center gap-1.5">
               <ShieldAlert className="w-3.5 h-3.5"/>
               Policy Rationale &amp; Inference Explanation
@@ -106,7 +75,6 @@ export const XaiExplanationCard = ({ evaluation, onAskCopilot }) => {
           </div>
         </div>
 
-        {/* Feature Attribution List (SHAP-style) */}
         <div className="mt-2">
           <button 
             onClick={() => setExpanded(!expanded)} 
@@ -156,7 +124,6 @@ export const XaiExplanationCard = ({ evaluation, onAskCopilot }) => {
           )}
         </div>
 
-        {/* Gemini AI Copilot Integration Section */}
         <div className="mt-5 pt-4 border-t border-[#D4AF37]/20 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -192,4 +159,3 @@ export const XaiExplanationCard = ({ evaluation, onAskCopilot }) => {
       </div>
     );
 };
-

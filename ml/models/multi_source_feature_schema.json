@@ -1,0 +1,28 @@
+{
+  "feature_count": 21,
+  "feature_names": [
+    "logon_count",
+    "device_event_count",
+    "file_event_count",
+    "http_event_count",
+    "email_event_count",
+    "day_of_week",
+    "is_weekend",
+    "logon_unique_pc_count",
+    "device_unique_pc_count",
+    "file_unique_pc_count",
+    "http_unique_pc_count",
+    "email_unique_pc_count",
+    "unique_files",
+    "file_content_events",
+    "unique_urls",
+    "unique_http_content",
+    "unique_recipients",
+    "email_size_total",
+    "attachments_total",
+    "total_activity",
+    "cross_source_activity"
+  ],
+  "model_type": "RandomForestClassifier",
+  "feature_representation": "Multi-source user-day behavioral features"
+}
