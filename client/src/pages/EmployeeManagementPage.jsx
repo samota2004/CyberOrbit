@@ -112,10 +112,19 @@ export const EmployeeManagementPage = ({
     try {
       setIsSubmitting(true);
 
+      const token = localStorage.getItem('zero_trust_token');
+
+      if (!token) {
+        throw new Error(
+          'Authentication token not found. Please log in again.'
+        );
+      }
+
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           name,
@@ -144,7 +153,7 @@ export const EmployeeManagementPage = ({
       }
 
       if (onAddUser) {
-        await onAddUser(data.user);
+        onAddUser(data.user);
       }
 
       setIsAddModalOpen(false);

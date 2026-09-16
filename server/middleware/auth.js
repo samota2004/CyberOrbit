@@ -9,7 +9,7 @@ function base64UrlEncode(value) {
     .toString("base64")
     .replace(/=/g, "")
     .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replace(/\//g, "_");x
 }
 
 function base64UrlDecode(value) {
@@ -89,13 +89,28 @@ export async function getRequesterUser(req) {
     const authorization = req.headers.authorization;
 
     if (!authorization?.startsWith("Bearer ")) {
+      console.log("AUTH DEBUG: Missing Bearer token");
       return null;
     }
 
     const token = authorization.substring(7);
     const payload = verifyJwtToken(token);
 
-    if (!payload?.sub || !payload.mfaVerified) {
+    if (!payload) {
+      console.log("AUTH DEBUG: Invalid JWT");
+      return null;
+    }
+
+    console.log("AUTH DEBUG: JWT payload:", {
+      sub: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      mfaVerified: payload.mfaVerified,
+      exp: payload.exp
+    });
+
+    if (!payload.sub || !payload.mfaVerified) {
+      console.log("AUTH DEBUG: Missing sub or MFA not verified");
       return null;
     }
 
@@ -103,7 +118,26 @@ export async function getRequesterUser(req) {
       where: { id: payload.sub }
     });
 
-    if (!user || user.status !== "ACTIVE") {
+    if (!user) {
+      console.log(
+        "AUTH DEBUG: PostgreSQL user not found:",
+        payload.sub
+      );
+      return null;
+    }
+
+    console.log("AUTH DEBUG: PostgreSQL user:", {
+      id: user.id,
+      email: user.email,
+      roleCode: user.roleCode,
+      status: user.status
+    });
+
+    if (user.status !== "ACTIVE") {
+      console.log(
+        "AUTH DEBUG: User status is not ACTIVE:",
+        user.status
+      );
       return null;
     }
 
@@ -111,11 +145,21 @@ export async function getRequesterUser(req) {
       user.roleCode !== "SECURITY_ADMIN" &&
       user.roleCode !== "SYSTEM_ADMIN"
     ) {
+      console.log(
+        "AUTH DEBUG: Insufficient role:",
+        user.roleCode
+      );
       return null;
     }
 
+    console.log("AUTH DEBUG: Administrator authentication passed");
+
     return user;
-  } catch {
+  } catch (error) {
+    console.error(
+      "AUTH DEBUG ERROR:",
+      error?.message || error
+    );
     return null;
   }
 }

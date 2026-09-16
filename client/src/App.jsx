@@ -575,23 +575,16 @@ export default function App() {
     }
   };
 
-  const handleAddUser = (newUserData) => {
-    const newUser = {
-      id: `user-${Date.now()}`,
-      employeeId: newUserData.employeeId || `EMP${users.length + 1}`,
-      name: newUserData.name || 'New Employee',
-      email: newUserData.email || 'employee@cyberorbit.corp',
-      department: newUserData.department || 'Engineering',
-      role: newUserData.role || 'EMPLOYEE',
-      currentRiskScore: 15,
-      currentRiskLevel: 'LOW',
-      currentTrustScore: 98,
-      status: newUserData.status || 'ACTIVE',
-      createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString()
-    };
-    setUsers(prev => [newUser, ...prev]);
-  };
+  const handleAddUser = (createdUser) => {
+  if (!createdUser?.id) {
+    return;
+  }
+
+  setUsers(prev => [
+    createdUser,
+    ...prev.filter(user => user.id !== createdUser.id)
+  ]);
+};
 
   const handleUpdateUser = (userId, updates) => {
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...updates } : u));
