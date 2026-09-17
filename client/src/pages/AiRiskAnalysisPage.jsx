@@ -94,7 +94,7 @@ export const AiRiskAnalysisPage = ({ users = [], events = [], selectedUserId, on
             </div>
 
             <h1 className="font-serif-display text-4xl sm:text-5xl lg:text-6xl font-light tracking-tight">
-              AI RISK ANALYSIS
+              RISK ANALYSIS
             </h1>
             <p className="text-xs text-gray-400 max-w-2xl mt-3 font-sans leading-relaxed">
               Multi-dimensional decomposition of composite behavioral risk scores across cryptographic, statistical, and ensemble machine learning inference pipelines.

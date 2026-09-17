@@ -2,14 +2,26 @@ const SOURCE_TYPES = {
   LOGON: "logon",
   LOGIN: "logon",
   AUTHENTICATION: "logon",
+  LOGIN_SUCCESS: "logon",
+  LOGIN_FAILED: "logon",
+
   DEVICE: "device",
   USB_ACTIVITY: "device",
+  USB_TRANSFER: "device",
+
   FILE_ACCESS: "file",
   FILE_DOWNLOAD: "file",
   DATA_ACCESS: "file",
+  MASS_DOWNLOAD: "file",
+  PRIVILEGE_ELEVATION: "file",
+  POLICY_VIOLATION: "file",
+  CROSS_DEPT_ACCESS: "file",
+  UNUSUAL_HOURS_ACCESS: "file",
+
   HTTP: "http",
   WEB_ACCESS: "http",
   SHELL_EXECUTION: "http",
+
   EMAIL: "email"
 };
 
@@ -114,10 +126,11 @@ function updateFeatureState(state, event) {
   features.total_activity += 1;
 
   const pcId =
-    event.deviceId ||
-    event.deviceName ||
-    event.ipAddress ||
-    "unknown-device";
+  event.deviceId ||
+  event.deviceName ||
+  event.ipAddress ||
+  event.ip ||
+  "unknown-device";
 
   if (source === "logon") {
     features.logon_count += 1;
@@ -143,11 +156,12 @@ function updateFeatureState(state, event) {
     }
 
     features.file_content_events +=
-      event.eventType === "FILE_ACCESS" ||
-      event.eventType === "FILE_DOWNLOAD" ||
-      event.eventType === "DATA_ACCESS"
-        ? 1
-        : 0;
+  event.eventType === "FILE_ACCESS" ||
+  event.eventType === "FILE_DOWNLOAD" ||
+  event.eventType === "DATA_ACCESS" ||
+  event.eventType === "MASS_DOWNLOAD"
+    ? 1
+    : 0;
   }
 
   if (source === "http") {

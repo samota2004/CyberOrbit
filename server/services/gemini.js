@@ -1,11 +1,22 @@
 import { GoogleGenAI } from "@google/genai";
 import { db } from "../models/db.js";
 
+const GEMINI_MODELS = [
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite"
+];
+
+const MAX_RETRIES_PER_MODEL = 1;
+const RETRY_DELAY_MS = 800;
+
 function getAiClient(reqHeaders = {}) {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
 
   if (!apiKey) {
-    console.warn("⚠️ GEMINI_API_KEY is missing in .env");
+    console.warn("GEMINI_API_KEY is missing in .env");
     return null;
   }
 
@@ -25,6 +36,100 @@ function getAiClient(reqHeaders = {}) {
       }
     }
   });
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function getErrorStatus(error) {
+  return Number(
+    error?.status ||
+    error?.code ||
+    error?.response?.status ||
+    error?.error?.code ||
+    0
+  );
+}
+
+function isRetryableError(error) {
+  const status = getErrorStatus(error);
+
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  const message = String(
+    error?.message ||
+    error?.error?.message ||
+    error ||
+    ""
+  ).toLowerCase();
+
+  return (
+    message.includes("high demand") ||
+    message.includes("temporarily unavailable") ||
+    message.includes("service unavailable") ||
+    message.includes("rate limit") ||
+    message.includes("resource exhausted") ||
+    message.includes("overloaded")
+  );
+}
+
+function isNonRetryableAuthenticationError(error) {
+  const status = getErrorStatus(error);
+
+  return (
+    status === 400 ||
+    status === 401 ||
+    status === 403
+  );
+}
+
+async function generateWithModel(ai, model, prompt, systemInstruction) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction
+        }
+      });
+
+      const text = response?.text?.trim();
+
+      if (text) {
+        return text;
+      }
+
+      lastError = new Error(
+        `Gemini returned an empty response using ${model}.`
+      );
+    } catch (error) {
+      lastError = error;
+
+      if (isNonRetryableAuthenticationError(error)) {
+        throw error;
+      }
+
+      if (!isRetryableError(error)) {
+        break;
+      }
+
+      if (attempt < MAX_RETRIES_PER_MODEL) {
+        await sleep(RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  throw lastError || new Error(
+    `Gemini generation failed using ${model}.`
+  );
 }
 
 class GeminiSecurityService {
@@ -76,32 +181,32 @@ Explain what occurred, why it may violate the user's normal behavioral baseline,
 and what risk it creates for enterprise resources.
 `;
 
-    const modelsToTry = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite"
-];
-
-    for (const model of modelsToTry) {
+    for (const model of GEMINI_MODELS) {
       try {
-        const response = await ai.models.generateContent({
+        const text = await generateWithModel(
+          ai,
           model,
-          contents: prompt,
-          config: {
-            systemInstruction:
-              "You are an expert enterprise cybersecurity investigator. Be direct, objective, and concise.",
-            temperature: 0.3
-          }
-        });
-
-        const text = response?.text?.trim();
+          prompt,
+          "You are an expert enterprise cybersecurity investigator. Be direct, objective, and concise."
+        );
 
         if (text) {
           return text;
         }
       } catch (error) {
-        console.error(
-          `❌ Gemini incident explanation error using ${model}:`,
-          error?.message || error
+        const status = getErrorStatus(error);
+
+        if (isNonRetryableAuthenticationError(error)) {
+          console.error(
+            `Gemini authentication/configuration error using ${model}:`,
+            error?.message || error
+          );
+
+          break;
+        }
+
+        console.warn(
+          `Gemini incident explanation unavailable using ${model} (${status || "unknown"}). Trying next model.`
         );
       }
     }
@@ -122,9 +227,6 @@ and what risk it creates for enterprise resources.
     let targetedUser = null;
     let targetedIncident = null;
 
-    /*
-     * Resolve user by database ID, employee ID, or name.
-     */
     if (context?.userId) {
       targetedUser = db.getUserById(context.userId);
     }
@@ -169,15 +271,24 @@ and what risk it creates for enterprise resources.
       .map(
         (incident) =>
           `[${incident.id}] ${
-            incident.userName || incident.userEmail || "Unknown User"
-          } - ${incident.eventType || incident.title || "Security Event"} - Risk ${
+            incident.userName ||
+            incident.userEmail ||
+            "Unknown User"
+          } - ${
+            incident.eventType ||
+            incident.title ||
+            "Security Event"
+          } - Risk ${
             incident.riskScore ?? 0
           } - Status ${incident.status}`
       )
       .slice(0, 10);
 
     const topRiskyUsers = db.users
-      .filter((user) => Number(user.currentRiskScore || 0) > 40)
+      .filter(
+        (user) =>
+          Number(user.currentRiskScore || 0) > 40
+      )
       .map(
         (user) =>
           `${user.name} (${user.employeeId}, ${user.department}): Risk ${
@@ -268,32 +379,32 @@ the employee was not found and recommend verifying database/seed data.
       );
     }
 
-    const modelsToTry = [
-  "gemini-3.6-flash",
-  "gemini-3.5-flash-lite"
-];
-
-    for (const model of modelsToTry) {
+    for (const model of GEMINI_MODELS) {
       try {
-        const response = await ai.models.generateContent({
+        const text = await generateWithModel(
+          ai,
           model,
-          contents: prompt,
-          config: {
-            systemInstruction:
-              "You are an advanced cybersecurity analyst copilot. Use clean bullet points and bold highlights.",
-            temperature: 0.4
-          }
-        });
-
-        const text = response?.text?.trim();
+          prompt,
+          "You are an advanced cybersecurity analyst copilot. Use clean bullet points and bold highlights."
+        );
 
         if (text) {
           return text;
         }
       } catch (error) {
-        console.error(
-          `❌ Gemini Copilot error using ${model}:`,
-          error?.message || error
+        const status = getErrorStatus(error);
+
+        if (isNonRetryableAuthenticationError(error)) {
+          console.error(
+            `Gemini authentication/configuration error using ${model}:`,
+            error?.message || error
+          );
+
+          break;
+        }
+
+        console.warn(
+          `Gemini Copilot unavailable using ${model} (${status || "unknown"}). Trying next model.`
         );
       }
     }
@@ -307,7 +418,10 @@ the employee was not found and recommend verifying database/seed data.
     );
   }
 
-  generateDeterministicFallbackExplanation(incident, user) {
+  generateDeterministicFallbackExplanation(
+    incident,
+    user
+  ) {
     return `
 Security anomaly detected for ${
       user?.name || "Unknown User"
@@ -326,7 +440,10 @@ Recommended Policy Action: ${
 `.trim();
   }
 
-  generateDeterministicCopilotResponse(query, context = {}) {
+  generateDeterministicCopilotResponse(
+    query,
+    context = {}
+  ) {
     const user =
       context?.targetedUser ||
       (context?.userId
@@ -347,7 +464,7 @@ Recommended Policy Action: ${
         user.baseline?.normalWorkHours?.start ?? 8
       }:00-${
         user.baseline?.normalWorkHours?.end ?? 19
-      }:00
+      }
 
 **SOC Recommendation:** ${
         Number(user.currentRiskScore || 0) >= 75
@@ -367,7 +484,8 @@ Recommended Policy Action: ${
     ).length;
 
     const highRiskCount = db.users.filter(
-      (user) => Number(user.currentRiskScore || 0) >= 60
+      (user) =>
+        Number(user.currentRiskScore || 0) >= 60
     ).length;
 
     return `

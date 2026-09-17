@@ -7,23 +7,53 @@ export const MlAnalyticsPage = () => {
     const { isDark } = useTheme();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
-    // Live single-event inference testing state
-    const [testTime, setTestTime] = useState(2); // 02:00 AM
+    const [testTime, setTestTime] = useState(2);
     const [testDownloadMB, setTestDownloadMB] = useState(300);
     const [testFailedLogins, setTestFailedLogins] = useState(2);
     const [predictionResult, setPredictionResult] = useState(null);
     const [predicting, setPredicting] = useState(false);
+    const [predictionError, setPredictionError] = useState('');
+    const [users, setUsers] = useState([]);
+    const [selectedUserId, setSelectedUserId] = useState('');
 
     useEffect(() => {
         fetch('/api/ml/metrics')
             .then(res => res.json())
             .then(json => {
-                if (json.success && json.data) {
-                    setData(json.data);
+                if (json.success) {
+                    setData(json.metrics || json.data || null);
                 }
             })
             .catch(err => console.error('Failed to load ML metrics', err))
             .finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => {
+        const loadUsers = async () => {
+            try {
+                const token = localStorage.getItem('zero_trust_token');
+                const res = await fetch('/api/users', {
+                    headers: {
+                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    }
+                });
+                const json = await res.json();
+                if (!res.ok || !json.success) {
+                    throw new Error(json.error?.message || 'Failed to load employees.');
+                }
+                const employeeList = (json.users || []).filter(
+                    (user) => !['SECURITY_ADMIN', 'SYSTEM_ADMIN'].includes(user.role)
+                );
+                setUsers(employeeList);
+                if (employeeList.length > 0) {
+                    setSelectedUserId(employeeList[0].id);
+                }
+            } catch (err) {
+                console.error('Failed to load employees', err);
+                setPredictionError(err.message || 'Failed to load employees.');
+            }
+        };
+        loadUsers();
     }, []);
 
     const baseline = data?.baselineModel || data?.baselineModelMetrics;
@@ -48,33 +78,66 @@ export const MlAnalyticsPage = () => {
     const testPartitionSize = data?.metrics?.testRecords || data?.testPartitionSize || baseline?.sampleCount || 2999;
 
     const handleRunInference = async () => {
+        const selectedUser = users.find((user) => user.id === selectedUserId);
+
+        if (!selectedUser) {
+            setPredictionError('Please select an employee first.');
+            return;
+        }
+
         try {
             setPredicting(true);
-            const res = await fetch('/api/ml/predict', {
+            setPredictionError('');
+            setPredictionResult(null);
+
+            const now = new Date();
+            const timestamp = new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate(),
+                testTime,
+                0,
+                0,
+                0
+            ).toISOString();
+
+            const token = localStorage.getItem('zero_trust_token');
+            const res = await fetch('/api/telemetry/ingest', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
                 body: JSON.stringify({
-                    userId: 'user-003',
-                    resourceId: 'res-fin-01',
-                    downloadSizeMB: testDownloadMB,
-                    failedLoginCount: testFailedLogins,
-                    isOffHours: testTime < 8 || testTime > 18
+                    eventId: `ml-test-${Date.now()}`,
+                    userId: selectedUser.id,
+                    timestamp,
+                    user_department: selectedUser.department || selectedUser.departmentCode || 'ENGINEERING',
+                    destination_site: testDownloadMB > 100 ? 'external-storage' : 'internal-portal',
+                    bytes_sent_kb: testDownloadMB * 1024,
+                    bytes_received_kb: 50,
+                    is_off_hours: testTime < 8 || testTime > 18 ? 1 : 0,
+                    usb_bluetooth_usage: 0,
+                    failed_login_attempts: testFailedLogins,
+                    application_shell_cmd: 'interactive-session',
+                    eventType: testFailedLogins > 0 ? 'LOGIN' : testDownloadMB > 100 ? 'FILE_DOWNLOAD' : 'RESOURCE_ACCESS'
                 })
             });
+
             const json = await res.json();
-            if (json.success) {
-                setPredictionResult(json);
+
+            if (!res.ok || !json.success) {
+                throw new Error(json.error?.message || json.detail || 'Prediction failed.');
             }
-        }
-        catch (err) {
+
+            setPredictionResult(json);
+        } catch (err) {
             console.error('Failed to run inference', err);
-        }
-        finally {
+            setPredictionError(err.message || 'Failed to run anomaly prediction.');
+        } finally {
             setPredicting(false);
         }
     };
-
-    // Feature Importance Comparison Bar Data
     const featureData = [
         { feature: 'Cross-Dept Weight', Enhanced: 0.26, Baseline: 0.05 },
         { feature: 'Device Trust Score', Enhanced: 0.22, Baseline: 0.0 },
@@ -83,8 +146,6 @@ export const MlAnalyticsPage = () => {
         { feature: 'Auth Failures', Enhanced: 0.11, Baseline: 0.22 },
         { feature: 'Privilege Change', Enhanced: 0.08, Baseline: 0.14 },
     ];
-
-    // ROC Curve Synthetic Data Points for visual research rendering
     const rocData = [
         { fpr: 0.0, baselineTpr: 0.0, enhancedTpr: 0.0 },
         { fpr: 0.02, baselineTpr: 0.15, enhancedTpr: 0.45 },
@@ -97,7 +158,7 @@ export const MlAnalyticsPage = () => {
 
     return (
       <div className="space-y-8">
-        {/* SECTION 1: Editorial Research Hero (Authoritative Black & Gold) */}
+        
         <div className="bg-[#07080A] border border-[#D4AF37]/35 p-8 shadow-2xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#D4AF37]"/>
           <div>
@@ -118,9 +179,9 @@ export const MlAnalyticsPage = () => {
           </div>
         </div>
 
-        {/* SECTION 2: Model Benchmark Metric Cards (Crisp Cards with Gold/Black Badges) */}
+        
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Metric 1: F1-Score Benchmark */}
+          
           <div className={`border p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between ${
             isDark ? 'bg-[#0E1015] border-[#D4AF37]/25' : 'bg-white border-gray-200'
           }`}>
@@ -139,7 +200,7 @@ export const MlAnalyticsPage = () => {
             </p>
           </div>
 
-          {/* Metric 2: Detection Precision */}
+          
           <div className={`border p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between ${
             isDark ? 'bg-[#0E1015] border-[#D4AF37]/25' : 'bg-white border-gray-200'
           }`}>
@@ -158,7 +219,7 @@ export const MlAnalyticsPage = () => {
             </p>
           </div>
 
-          {/* Metric 3: Exfiltration Recall */}
+          
           <div className={`border p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between ${
             isDark ? 'bg-[#0E1015] border-[#D4AF37]/25' : 'bg-white border-gray-200'
           }`}>
@@ -177,7 +238,7 @@ export const MlAnalyticsPage = () => {
             </p>
           </div>
 
-          {/* Metric 4: False Positive Rate (FPR) */}
+          
           <div className={`border p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col justify-between ${
             isDark ? 'bg-[#0E1015] border-[#D4AF37]/25' : 'bg-white border-gray-200'
           }`}>
@@ -197,9 +258,9 @@ export const MlAnalyticsPage = () => {
           </div>
         </div>
 
-        {/* SECTION 3: Comparative Evaluation Table & ROC Curve */}
+        
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Table: Model Architecture Comparison (7 cols - Crisp Light Card) */}
+          
           <div className={`lg:col-span-7 border p-6 shadow-sm space-y-4 ${
             isDark ? 'bg-[#0E1015] border-[#D4AF37]/25 text-white' : 'bg-white border-gray-200 text-[#111317]'
           }`}>
@@ -265,7 +326,7 @@ export const MlAnalyticsPage = () => {
             </div>
           </div>
 
-          {/* ROC Curve Comparison Chart (5 cols - Deep Black Telemetry Panel) */}
+          
           <div className="lg:col-span-5 bg-[#07080A] border border-[#D4AF37]/35 p-6 shadow-xl space-y-4 text-white">
             <div className="flex items-center justify-between pb-3 border-b border-[#D4AF37]/25">
               <div>
@@ -304,7 +365,7 @@ export const MlAnalyticsPage = () => {
           </div>
         </div>
 
-        {/* SECTION 4: Feature Importance Ranking (Crisp White / Light Card) */}
+        
         <div className={`border p-6 shadow-sm space-y-4 ${
           isDark ? 'bg-[#0E1015] border-[#D4AF37]/25 text-white' : 'bg-white border-gray-200 text-[#111317]'
         }`}>
@@ -344,77 +405,428 @@ export const MlAnalyticsPage = () => {
           </div>
         </div>
 
-        {/* SECTION 5: Live Single-Event Inference Testing Lab (Deep Black Terminal with Gold Controls) */}
-        <div className="bg-[#07080A] border border-[#D4AF37]/35 p-6 shadow-2xl space-y-5 text-white relative overflow-hidden">
+        <div className="bg-[#07080A] border border-[#D4AF37]/35 p-6 shadow-2xl space-y-6 text-white relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#D4AF37]"/>
-          
-          <div className="flex items-center justify-between pb-3 border-b border-[#D4AF37]/25">
-            <div className="flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-[#D4AF37]"/>
-              <h3 className="font-serif-display text-xl text-white font-normal">Live ML Behavioral Anomaly Inference Tester</h3>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#D4AF37]/25">
+            <div>
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-[#D4AF37]"/>
+                <h3 className="font-serif-display text-xl text-white font-normal">
+                  Live ML Behavioral Anomaly Inference Tester
+                </h3>
+              </div>
+              <p className="text-[11px] text-gray-500 font-mono mt-1">
+                Submit behavioral telemetry to the existing detection pipeline
+              </p>
             </div>
-            <span className="text-[10px] font-mono text-[#D4AF37] border border-[#D4AF37]/40 px-2 py-0.5 bg-black">
-              FEATURE VECTOR EXTRACTION
+            <span className="text-[10px] font-mono text-[#D4AF37] border border-[#D4AF37]/40 px-2.5 py-1 bg-black whitespace-nowrap">
+              REAL TELEMETRY
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-            <div className="bg-black/60 border border-[#D4AF37]/20 p-3.5">
-              <label className="block text-gray-300 font-mono mb-1.5 text-[11px] uppercase">Simulated Hour: <span className="text-[#D4AF37] font-bold">{testTime}:00</span></label>
-              <input type="range" min={0} max={23} value={testTime} onChange={(e) => setTestTime(Number(e.target.value))} className="w-full accent-[#D4AF37] cursor-pointer"/>
+          <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-black border border-[#D4AF37]/20 p-4">
+                <label className="block text-gray-400 font-mono mb-2 text-[10px] uppercase tracking-wider">
+                  Target Employee
+                </label>
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => {
+                    setSelectedUserId(e.target.value);
+                    setPredictionResult(null);
+                    setPredictionError('');
+                  }}
+                  className="w-full h-10 bg-[#080808] border border-[#D4AF37]/30 text-white px-3 font-mono text-[11px] outline-none focus:border-[#D4AF37]"
+                >
+                  <option value="">Select employee</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} — {user.employeeId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-black border border-[#D4AF37]/20 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-gray-400 font-mono text-[10px] uppercase tracking-wider">
+                    Simulated Hour
+                  </label>
+                  <span className="text-[#D4AF37] font-mono font-bold text-xs">
+                    {String(testTime).padStart(2, '0')}:00
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={23}
+                  value={testTime}
+                  onChange={(e) => setTestTime(Number(e.target.value))}
+                  className="w-full accent-[#D4AF37] cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-gray-600 font-mono mt-1">
+                  <span>00:00</span>
+                  <span>23:00</span>
+                </div>
+              </div>
+
+              <div className="bg-black border border-[#D4AF37]/20 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-gray-400 font-mono text-[10px] uppercase tracking-wider">
+                    Download Size
+                  </label>
+                  <span className="text-[#D4AF37] font-mono font-bold text-xs">
+                    {testDownloadMB} MB
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1000}
+                  step={25}
+                  value={testDownloadMB}
+                  onChange={(e) => setTestDownloadMB(Number(e.target.value))}
+                  className="w-full accent-[#D4AF37] cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-gray-600 font-mono mt-1">
+                  <span>0 MB</span>
+                  <span>1000 MB</span>
+                </div>
+              </div>
+
+              <div className="bg-black border border-[#D4AF37]/20 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-gray-400 font-mono text-[10px] uppercase tracking-wider">
+                    Failed Logins
+                  </label>
+                  <span className="text-[#D4AF37] font-mono font-bold text-xs">
+                    {testFailedLogins}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={5}
+                  value={testFailedLogins}
+                  onChange={(e) => setTestFailedLogins(Number(e.target.value))}
+                  className="w-full accent-[#D4AF37] cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-gray-600 font-mono mt-1">
+                  <span>0</span>
+                  <span>5</span>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-black/60 border border-[#D4AF37]/20 p-3.5">
-              <label className="block text-gray-300 font-mono mb-1.5 text-[11px] uppercase">Download Size: <span className="text-[#D4AF37] font-bold">{testDownloadMB} MB</span></label>
-              <input type="range" min={0} max={1000} step={25} value={testDownloadMB} onChange={(e) => setTestDownloadMB(Number(e.target.value))} className="w-full accent-[#D4AF37] cursor-pointer"/>
-            </div>
+            <div className="flex flex-col justify-between gap-3">
+              <div className="bg-black border border-[#D4AF37]/20 p-4">
+                <div className="text-[10px] text-gray-500 font-mono uppercase tracking-wider mb-3">
+                  Inference Source
+                </div>
+                <div className="space-y-2 text-[11px] font-mono">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Endpoint</span>
+                    <span className="text-gray-300">Telemetry Ingest</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Model</span>
+                    <span className="text-gray-300">RF + existing engine</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">XAI</span>
+                    <span className="text-emerald-400">Enabled</span>
+                  </div>
+                </div>
+              </div>
 
-            <div className="bg-black/60 border border-[#D4AF37]/20 p-3.5">
-              <label className="block text-gray-300 font-mono mb-1.5 text-[11px] uppercase">Failed Logins: <span className="text-[#D4AF37] font-bold">{testFailedLogins}</span></label>
-              <input type="range" min={0} max={5} value={testFailedLogins} onChange={(e) => setTestFailedLogins(Number(e.target.value))} className="w-full accent-[#D4AF37] cursor-pointer"/>
-            </div>
-
-            <div className="flex items-end">
-              <button 
-                onClick={handleRunInference} 
-                disabled={predicting} 
-                className="w-full py-3 px-4 bg-[#D4AF37] hover:bg-[#B8860B] text-black font-mono font-bold text-xs tracking-wider transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer border border-[#D4AF37] hover:border-[#B8860B]"
+              <button
+                onClick={handleRunInference}
+                disabled={predicting || !selectedUserId}
+                className="w-full min-h-14 px-4 bg-[#D4AF37] hover:bg-[#B8860B] text-black font-mono font-bold text-xs tracking-wider transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed border border-[#D4AF37]"
               >
-                <Play className="w-3.5 h-3.5"/>
-                <span>{predicting ? 'PREDICTING...' : 'PREDICT ANOMALY'}</span>
+                <Play className="w-4 h-4"/>
+                <span>{predicting ? 'ANALYZING TELEMETRY...' : 'PREDICT ANOMALY'}</span>
               </button>
             </div>
           </div>
 
-          {predictionResult && (
-            <div className="p-4 bg-black border border-[#D4AF37]/35 space-y-3 text-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-gray-400">ML Anomaly Probability:</span>
-                  <span className={`font-mono text-base font-bold ${predictionResult.mlAnomalyScore > 0.65 ? 'text-red-400' : 'text-[#D4AF37]'}`}>
-                    {(predictionResult.mlAnomalyScore * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <span className={`font-mono font-bold px-2.5 py-0.5 border text-[11px] ${predictionResult.isAnomalous
-                  ? 'border-red-500/50 text-red-400 bg-red-950/20'
-                  : 'border-[#D4AF37]/50 text-[#D4AF37] bg-[#D4AF37]/10'}`}>
-                  {predictionResult.isAnomalous ? 'ANOMALOUS BEHAVIOR' : 'CONFORMS TO BASELINE'}
-                </span>
-              </div>
-
-              <div className="space-y-1.5 pt-2 border-t border-[#D4AF37]/20">
-                <span className="text-[10px] font-mono text-gray-400 block uppercase">Attributed Factors:</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {predictionResult.attributions.map((att, idx) => (
-                    <div key={idx} className="p-2.5 bg-[#0E1015] border border-[#D4AF37]/25 text-[11px] flex justify-between items-center">
-                      <span className="text-gray-200 truncate font-sans">{att.factor}</span>
-                      <span className="font-mono text-[#D4AF37] font-bold">+{att.scoreImpact} pts</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {predictionError && (
+            <div className="p-4 bg-red-950/20 border border-red-500/40 text-red-300 text-xs font-mono">
+              {predictionError}
             </div>
           )}
+
+          {predictionResult && (() => {
+            const result = predictionResult;
+            const ml = result?.ml || {};
+            const riskAssessment = result?.riskAssessment || {};
+            const policyDecision = result?.policyDecision || {};
+            const resultUser = result?.user || users.find((user) => user.id === selectedUserId) || {};
+
+            const threatProbability = Number(
+              ml.threat_probability ??
+              ml.threatProbability ??
+              ml.mlAnomalyScore ??
+              ml.supervisedProbability ??
+              result?.threatProbability ??
+              result?.mlAnomalyScore ??
+              0
+            );
+
+            const rfProbability = Number(
+              ml.supervisedProbability ??
+              ml.threat_probability ??
+              ml.threatProbability ??
+              threatProbability
+            );
+
+            const riskScore = Number(
+              ml.risk_score ??
+              riskAssessment.riskScore ??
+              result?.riskScore ??
+              0
+            );
+
+            const trustScore = Number(
+              ml.trust_score ??
+              riskAssessment.trustScore ??
+              result?.trustScore ??
+              0
+            );
+
+            const contextualRiskScore = Number(
+              ml.contextual_risk_score ??
+              riskAssessment.contextualRiskScore ??
+              result?.contextualRiskScore ??
+              0
+            );
+
+            const policyAction =
+              ml.policy_action ??
+              policyDecision.decision ??
+              result?.policyAction ??
+              'N/A';
+
+            const anomalous =
+              ml.is_anomalous ??
+              ml.isAnomalous ??
+              result?.anomalyDetected ??
+              riskScore >= 40;
+
+            const rawReasons =
+              Array.isArray(ml.xai_reasons)
+                ? ml.xai_reasons
+                : Array.isArray(ml.attributions)
+                  ? ml.attributions
+                  : Array.isArray(result?.xaiReasons)
+                    ? result.xaiReasons
+                    : [];
+
+            const isolationForestScore =
+              ml.isolation_forest_score ??
+              ml.isolationForestScore ??
+              result?.isolationForestScore;
+
+            const formatFeature = (value) =>
+              String(value || '')
+                .replaceAll('_', ' ')
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+
+            const formatReason = (reason) => {
+              if (typeof reason === 'string') {
+                try {
+                  const parsed = JSON.parse(reason);
+                  return parsed;
+                } catch {
+                  return { reason };
+                }
+              }
+              return reason || {};
+            };
+
+            return (
+              <div className="border border-[#D4AF37]/30 bg-black overflow-hidden">
+                <div className="px-5 py-4 border-b border-[#D4AF37]/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] text-gray-500 font-mono uppercase tracking-wider">
+                      Prediction Result
+                    </div>
+                    <div className="text-base font-mono text-white mt-1">
+                      {resultUser.name || 'Selected employee'}
+                      {resultUser.employeeId ? ` — ${resultUser.employeeId}` : ''}
+                    </div>
+                  </div>
+
+                  <span className={`w-fit px-3 py-1.5 border text-[10px] font-mono font-bold tracking-wider ${
+                    anomalous
+                      ? 'border-red-500/50 text-red-400 bg-red-950/20'
+                      : 'border-emerald-500/50 text-emerald-400 bg-emerald-950/20'
+                  }`}>
+                    {anomalous ? 'ANOMALOUS BEHAVIOR' : 'CONFORMS TO BASELINE'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-5 divide-x-0 lg:divide-x divide-[#D4AF37]/15">
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      ML Probability
+                    </div>
+                    <div className="text-2xl font-mono font-bold text-[#D4AF37] mt-1">
+                      {(threatProbability * 100).toFixed(1)}%
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      RF Probability
+                    </div>
+                    <div className="text-2xl font-mono font-bold text-white mt-1">
+                      {(rfProbability * 100).toFixed(1)}%
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      Risk Score
+                    </div>
+                    <div className="text-2xl font-mono font-bold text-white mt-1">
+                      {riskScore.toFixed(1)}
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      Trust Score
+                    </div>
+                    <div className="text-2xl font-mono font-bold text-white mt-1">
+                      {trustScore.toFixed(1)}
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      Policy Action
+                    </div>
+                    <div className="text-lg font-mono font-bold text-[#D4AF37] mt-2">
+                      {policyAction}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 border-t border-[#D4AF37]/20">
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      Contextual Risk
+                    </div>
+                    <div className="text-base font-mono font-bold text-white mt-1">
+                      {contextualRiskScore.toFixed(1)}
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      Isolation Forest
+                    </div>
+                    <div className="text-base font-mono font-bold text-white mt-1">
+                      {isolationForestScore === undefined || isolationForestScore === null
+                        ? 'Not returned'
+                        : Number(isolationForestScore).toFixed(4)}
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                      Pipeline
+                    </div>
+                    <div className="text-base font-mono font-bold text-[#D4AF37] mt-1">
+                      LIVE TELEMETRY
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 border-t border-[#D4AF37]/20">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <div className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">
+                        Explainable AI
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        Factors contributing to the model output
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-mono text-[#D4AF37] border border-[#D4AF37]/30 px-2 py-1">
+                      {rawReasons.length} FACTORS
+                    </span>
+                  </div>
+
+                  {rawReasons.length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {rawReasons.map((rawReason, idx) => {
+                        const reason = formatReason(rawReason);
+                        const feature = reason.feature || reason.factor || reason.name || 'Behavioral factor';
+                        const value = reason.value;
+                        const shapValue =
+                          reason.shap_value ??
+                          reason.shapValue ??
+                          reason.impact_value;
+                        const impact = reason.impact || reason.reason || '';
+
+                        return (
+                          <div
+                            key={idx}
+                            className="border border-[#D4AF37]/20 bg-[#0C0D10] p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="text-xs text-white font-mono font-semibold">
+                                {formatFeature(feature)}
+                              </div>
+                              <span className={`text-[9px] font-mono px-2 py-0.5 border ${
+                                String(impact).toLowerCase().includes('increase')
+                                  ? 'border-red-500/30 text-red-400'
+                                  : 'border-emerald-500/30 text-emerald-400'
+                              }`}>
+                                {impact
+                                  ? String(impact).toUpperCase()
+                                  : 'MODEL FACTOR'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-white/5">
+                              <div>
+                                <div className="text-[9px] text-gray-600 font-mono uppercase">
+                                  Observed Value
+                                </div>
+                                <div className="text-xs text-gray-300 font-mono mt-1">
+                                  {value === undefined || value === null ? '—' : String(value)}
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-[9px] text-gray-600 font-mono uppercase">
+                                  SHAP Impact
+                                </div>
+                                <div className="text-xs text-gray-300 font-mono mt-1">
+                                  {shapValue === undefined || shapValue === null
+                                    ? '—'
+                                    : Number(shapValue).toFixed(4)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="border border-white/10 bg-[#0C0D10] p-4 text-gray-500 font-mono text-xs">
+                      No XAI attribution data returned.
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );

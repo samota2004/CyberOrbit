@@ -41,17 +41,12 @@ export const EmployeeManagementPage = ({
     'FINANCE',
     'SECURITY',
     'HR',
-    'MARKETING',
     'LEGAL',
-    'IT',
-    'OPERATIONS'
+    'IT'
   ];
 
   const roles = [
-    'EMPLOYEE',
-    'MANAGER',
-    'SECURITY_ADMIN',
-    'SYSTEM_ADMIN'
+    'EMPLOYEE'
   ];
 
   const generateEmployeeId = () => {
@@ -605,7 +600,7 @@ export const EmployeeManagementPage = ({
                       name: e.target.value
                     })
                   }
-                  placeholder="Jane Doe"
+                  placeholder="Employee Name"
                   className="w-full border border-[#D4AF37]/30 bg-transparent px-3 py-2 text-current outline-none focus:border-[#D4AF37]"
                 />
               </div>
@@ -625,7 +620,7 @@ export const EmployeeManagementPage = ({
                       email: e.target.value
                     })
                   }
-                  placeholder="jane.doe@enterprise.io"
+                  placeholder="Employee Mail-Id"
                   className="w-full border border-[#D4AF37]/30 bg-transparent px-3 py-2 text-current outline-none focus:border-[#D4AF37]"
                 />
               </div>
