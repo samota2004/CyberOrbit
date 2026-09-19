@@ -127,7 +127,7 @@ export const EmployeeDashboard = ({
               </div>
               <div>
                 <span className="text-gray-500">ROLE: </span>
-                <span className="text-current font-semibold">{currentUser?.role?.replace('_', ' ') || 'EMPLOYEE'}</span>
+                <span className="text-current font-semibold">{currentUser?.role?.replace('_', ' ') || 'Main Admin'}</span>
               </div>
               <div>
                 <span className="text-gray-500">SECURITY STATUS: </span>

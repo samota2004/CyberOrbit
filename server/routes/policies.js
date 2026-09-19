@@ -1,16 +1,19 @@
 import { Router } from "express";
-import { db } from "../middleware/auth.js";
-import { requireSecurityAdmin } from "../middleware/auth.js";
+import { db, requireSecurityAdmin } from "../middleware/auth.js";
 import { sseManager } from "../services/sse.js";
 
 const router = Router();
 
-router.get("/", (req, res) => {
-  res.json({
-    success: true,
-    config: db.policyConfig
-  });
-});
+router.get(
+  "/",
+  requireSecurityAdmin,
+  (req, res) => {
+    res.json({
+      success: true,
+      config: db.policyConfig
+    });
+  }
+);
 
 router.patch(
   "/",
@@ -24,14 +27,10 @@ router.patch(
     };
 
     if (
-      newConfig.lowRiskMax >=
-        newConfig.mediumRiskMax ||
-      newConfig.mediumRiskMax >=
-        newConfig.highRiskMax ||
-      newConfig.highRiskMax >=
-        newConfig.veryHighRiskMax ||
-      newConfig.veryHighRiskMax >=
-        newConfig.criticalThreshold
+      newConfig.lowRiskMax >= newConfig.mediumRiskMax ||
+      newConfig.mediumRiskMax >= newConfig.highRiskMax ||
+      newConfig.highRiskMax >= newConfig.veryHighRiskMax ||
+      newConfig.veryHighRiskMax >= newConfig.criticalThreshold
     ) {
       return res.status(400).json({
         success: false,
@@ -65,11 +64,10 @@ router.patch(
       }
     });
 
-    res.json({
+    return res.json({
       success: true,
       config: db.policyConfig,
-      message:
-        "Zero Trust policy configuration saved."
+      message: "Zero Trust policy configuration saved."
     });
   }
 );

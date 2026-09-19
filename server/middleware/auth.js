@@ -21,10 +21,28 @@ function base64UrlEncode(value) {
 }
 
 function base64UrlDecode(value) {
-  return Buffer.from(
-    value.replace(/-/g, "+").replace(/_/g, "/"),
-    "base64"
-  ).toString();
+  const normalized = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const padding = normalized.length % 4;
+
+  const padded =
+    padding === 0
+      ? normalized
+      : normalized + "=".repeat(4 - padding);
+
+  return Buffer.from(padded, "base64").toString();
+}
+
+function createJwtSignature(encodedHeader, encodedPayload) {
+  return crypto
+    .createHmac("sha256", getJwtSecret())
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
 
 function isAdminRole(role) {
@@ -34,11 +52,17 @@ function isAdminRole(role) {
   );
 }
 
+function getUserRole(user) {
+  return user?.roleCode || user?.role || null;
+}
+
 export function generateJwtToken(
   user,
   mfaVerified = false,
   deviceId = null
 ) {
+  const now = Math.floor(Date.now() / 1000);
+
   const header = {
     alg: "HS256",
     typ: "JWT"
@@ -47,45 +71,32 @@ export function generateJwtToken(
   const payload = {
     sub: user.id,
     email: user.email,
-    role: user.roleCode || user.role,
+    role: getUserRole(user),
     mfaVerified,
     deviceId,
-    iat: Math.floor(Date.now() / 1000),
-    exp:
-      Math.floor(Date.now() / 1000) +
-      8 * 60 * 60
+    iat: now,
+    exp: now + 8 * 60 * 60
   };
 
-  const encodedHeader =
-    base64UrlEncode(
-      JSON.stringify(header)
-    );
+  const encodedHeader = base64UrlEncode(
+    JSON.stringify(header)
+  );
 
-  const encodedPayload =
-    base64UrlEncode(
-      JSON.stringify(payload)
-    );
+  const encodedPayload = base64UrlEncode(
+    JSON.stringify(payload)
+  );
 
-  const signature =
-    crypto
-      .createHmac(
-        "sha256",
-        getJwtSecret()
-      )
-      .update(
-        `${encodedHeader}.${encodedPayload}`
-      )
-      .digest("base64")
-      .replace(/=/g, "")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_");
+  const signature = createJwtSignature(
+    encodedHeader,
+    encodedPayload
+  );
 
   return `${encodedHeader}.${encodedPayload}.${signature}`;
 }
 
 export function verifyJwtToken(token) {
   try {
-    if (!token) {
+    if (!token || typeof token !== "string") {
       return null;
     }
 
@@ -98,63 +109,86 @@ export function verifyJwtToken(token) {
     const [
       encodedHeader,
       encodedPayload,
-      signature
+      providedSignature
     ] = parts;
 
-    const expectedSignature =
-      crypto
-        .createHmac(
-          "sha256",
-          getJwtSecret()
-        )
-        .update(
-          `${encodedHeader}.${encodedPayload}`
-        )
-        .digest("base64")
-        .replace(/=/g, "")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
+    if (
+      !encodedHeader ||
+      !encodedPayload ||
+      !providedSignature
+    ) {
+      return null;
+    }
 
-    const providedSignature =
-      Buffer.from(signature);
+    let decodedHeader;
 
-    const calculatedSignature =
+    try {
+      decodedHeader = JSON.parse(
+        base64UrlDecode(encodedHeader)
+      );
+    } catch {
+      return null;
+    }
+
+    if (
+      decodedHeader.alg !== "HS256" ||
+      decodedHeader.typ !== "JWT"
+    ) {
+      return null;
+    }
+
+    const expectedSignature = createJwtSignature(
+      encodedHeader,
+      encodedPayload
+    );
+
+    const providedSignatureBuffer =
+      Buffer.from(providedSignature);
+
+    const expectedSignatureBuffer =
       Buffer.from(expectedSignature);
 
     if (
-      providedSignature.length !==
-      calculatedSignature.length
+      providedSignatureBuffer.length !==
+      expectedSignatureBuffer.length
     ) {
       return null;
     }
 
     if (
       !crypto.timingSafeEqual(
-        providedSignature,
-        calculatedSignature
+        providedSignatureBuffer,
+        expectedSignatureBuffer
       )
     ) {
       return null;
     }
 
-    const decoded =
-      JSON.parse(
-        base64UrlDecode(
-          encodedPayload
-        )
+    let decodedPayload;
+
+    try {
+      decodedPayload = JSON.parse(
+        base64UrlDecode(encodedPayload)
       );
+    } catch {
+      return null;
+    }
 
     const currentTime =
       Math.floor(Date.now() / 1000);
 
     if (
-      !decoded.exp ||
-      decoded.exp < currentTime
+      !decodedPayload.exp ||
+      decodedPayload.exp <= currentTime
     ) {
       return null;
     }
 
-    return decoded;
+    if (!decodedPayload.sub) {
+      return null;
+    }
+
+    return decodedPayload;
   } catch (error) {
     console.error(
       "AUTH DEBUG: JWT verification error:",
@@ -172,7 +206,15 @@ export async function getRequesterUser(req) {
 
     if (
       !authorization ||
-      !authorization.startsWith("Bearer ")
+      typeof authorization !== "string"
+    ) {
+      return null;
+    }
+
+    if (
+      !authorization
+        .toLowerCase()
+        .startsWith("bearer ")
     ) {
       return null;
     }
@@ -284,11 +326,9 @@ export async function requireSecurityAdmin(
       });
     }
 
-    if (
-      !isAdminRole(
-        user.roleCode
-      )
-    ) {
+    const role = getUserRole(user);
+
+    if (!isAdminRole(role)) {
       return res.status(403).json({
         success: false,
         error: {
@@ -339,11 +379,9 @@ export async function requireMainAdmin(
       });
     }
 
-    if (
-      !isAdminRole(
-        user.roleCode
-      )
-    ) {
+    const role = getUserRole(user);
+
+    if (!isAdminRole(role)) {
       return res.status(403).json({
         success: false,
         error: {
@@ -354,9 +392,7 @@ export async function requireMainAdmin(
       });
     }
 
-    if (
-      user.isMainAdmin !== true
-    ) {
+    if (user.isMainAdmin !== true) {
       return res.status(403).json({
         success: false,
         error: {

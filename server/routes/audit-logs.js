@@ -8,47 +8,164 @@ router.get(
   "/export",
   requireSecurityAdmin,
   (req, res) => {
-    const logs = db.auditLogs || [];
+    try {
+      const logs = db.auditLogs || [];
 
-    const headers = [
-      "id",
-      "userId",
-      "userName",
-      "action",
-      "category",
-      "severity",
-      "timestamp"
-    ];
+      const format = (
+        req.query.format || "csv"
+      ).toLowerCase();
 
-    const rows = logs.map(log =>
-      headers
-        .map(key =>
-          JSON.stringify(log[key] ?? "")
-        )
-        .join(",")
-    );
+      const category = req.query.category;
+      const search = (
+        req.query.search || ""
+      ).toLowerCase().trim();
 
-    res.setHeader(
-      "Content-Type",
-      "text/csv"
-    );
+      const range = req.query.range || "ALL";
 
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="audit-logs.csv"'
-    );
+      const now = Date.now();
 
-    res.send(
-      [headers.join(","), ...rows].join("\n")
-    );
+      let rangeStart = null;
+
+      if (range === "24H") {
+        rangeStart =
+          now - 24 * 60 * 60 * 1000;
+      }
+
+      if (range === "7D") {
+        rangeStart =
+          now - 7 * 24 * 60 * 60 * 1000;
+      }
+
+      if (range === "30D") {
+        rangeStart =
+          now - 30 * 24 * 60 * 60 * 1000;
+      }
+
+      const filteredLogs = logs.filter((log) => {
+        const matchesCategory =
+          !category ||
+          category === "ALL" ||
+          log.category === category;
+
+        const searchableText = [
+          log.id,
+          log.userId,
+          log.userName,
+          log.actorName,
+          log.targetUserName,
+          log.action,
+          log.deviceName,
+          log.policyDecision,
+          log.category,
+          log.severity
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        const matchesSearch =
+          !search ||
+          searchableText.includes(search);
+
+        let matchesDate = true;
+
+        if (
+          rangeStart &&
+          log.timestamp
+        ) {
+          matchesDate =
+            new Date(log.timestamp).getTime() >=
+            rangeStart;
+        }
+
+        return (
+          matchesCategory &&
+          matchesSearch &&
+          matchesDate
+        );
+      });
+
+      if (format === "json") {
+        res.setHeader(
+          "Content-Type",
+          "application/json; charset=utf-8"
+        );
+
+        res.setHeader(
+          "Content-Disposition",
+          'attachment; filename="audit-logs.json"'
+        );
+
+        return res.json(filteredLogs);
+      }
+
+      const headers = [
+        "id",
+        "userId",
+        "userName",
+        "action",
+        "category",
+        "severity",
+        "timestamp",
+        "deviceName",
+        "policyDecision",
+        "riskScore",
+        "status"
+      ];
+
+      const rows = filteredLogs.map((log) =>
+        headers
+          .map((key) =>
+            JSON.stringify(
+              log[key] ?? ""
+            )
+          )
+          .join(",")
+      );
+
+      const csv = [
+        headers.join(","),
+        ...rows
+      ].join("\n");
+
+      res.setHeader(
+        "Content-Type",
+        "text/csv; charset=utf-8"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="audit-logs.csv"'
+      );
+
+      return res.send(csv);
+    } catch (error) {
+      console.error(
+        "Audit log export error:",
+        error?.message || error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "AUDIT_EXPORT_ERROR",
+          message:
+            "Unable to export audit logs."
+        }
+      });
+    }
   }
 );
 
-router.get("/", requireSecurityAdmin, (req, res) => {
-  res.json({
-    success: true,
-    auditLogs: db.auditLogs
-  });
-});
+router.get(
+  "/",
+  requireSecurityAdmin,
+  (req, res) => {
+    res.json({
+      success: true,
+      auditLogs: db.auditLogs || []
+    });
+  }
+);
 
 export default router;
